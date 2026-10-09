@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Homework 2 - Cryptography and statistics in blockchains</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav>
+  <a href="index.html">Home</a>
+  <a href="homework1.html">Homework 1</a>
+  <a href="homework2.html">Homework 2</a>
+</nav>
+<main>
+  <h1>Homework 2 - Cryptography and statistics in the most famous blockchains</h1>
+  <p class="sub">Research: modern applications of cryptography and statistics in Bitcoin and Ethereum, with two small simulations.</p>
+
+  <h2>1. Overview</h2>
+  <p>A blockchain is a replicated ledger that strangers agree on without a central authority. Two toolboxes make this work.
+    Cryptography provides the objects (hashes, signatures, commitments). Statistics and probability explain how the system
+    behaves and how it can be attacked, because mining, randomness, network delay and attacker power are all random quantities.</p>
+  <table>
+    <thead><tr><th>Building block</th><th>Bitcoin</th><th>Ethereum</th><th>Statistical side</th></tr></thead>
+    <tbody>
+      <tr><td>Hash function</td><td>SHA-256 (double) for proof of work, block ids, Merkle tree</td><td>Keccak-256 for addresses, state and transaction hashes</td><td>Output must look uniform; mining is a Bernoulli process</td></tr>
+      <tr><td>Signature</td><td>ECDSA on secp256k1; Schnorr (BIP 340) on the same curve since Taproot (2021)</td><td>ECDSA on secp256k1 for accounts; BLS signatures on BLS12-381 for validators</td><td>The per-signature nonce must be uniform and secret</td></tr>
+      <tr><td>Consensus</td><td>Proof of work: longest (most-work) chain</td><td>Proof of stake since the Merge (September 2022): validators chosen pseudo-randomly</td><td>Poisson arrivals, double-spend probability, selfish mining</td></tr>
+      <tr><td>Address</td><td>RIPEMD-160(SHA-256(public key)) (and variants)</td><td>last 20 bytes of Keccak-256(public key)</td><td>Collisions negligible; low-entropy keys are not</td></tr>
+    </tbody>
+  </table>
+  <p>The elliptic curve of Homework 1 is the same curve both systems use to prove that a payment was authorised by the owner of a key.</p>
+
+  <h2>2. Mining as a Poisson process</h2>
+  <p>To mine a Bitcoin block a miner varies a nonce until <code>SHA-256(SHA-256(header))</code>, read as a number, is below a target <em>T</em>.
+    If the hash behaves like a uniform random value, each attempt succeeds with the tiny probability
+    <em>p = T / 2<sup>256</sup></em>, independently of all the others. A long sequence of independent, rare Bernoulli trials gives:</p>
+  <ul>
+    <li>the number of blocks found in a time window is approximately <strong>Poisson</strong>, with rate &lambda; = (hash rate) &middot; p;</li>
+    <li>the time between blocks is <strong>exponential</strong> with mean 1/&lambda;, and it is <strong>memoryless</strong>: having waited 20 minutes does not make the next block closer.</li>
+  </ul>
+  <p>The protocol aims at a mean of 10 minutes and re-adjusts the difficulty every 2016 blocks (about two weeks). The expected number of hashes per block is
+    <em>D &middot; 2<sup>32</sup></em>, where D is the difficulty, so the network hash rate can be estimated as <em>D &middot; 2<sup>32</sup> / 600</em> hashes per second.
+    The estimate comes from a finite sample of block times: the sum of 2016 exponential intervals has relative standard deviation 1/&radic;2016 &asymp; 2.2%,
+    which is the statistical error of each difficulty adjustment.</p>
+
+  <div class="card">
+    <strong>Simulation: block arrival times</strong>
+    <div class="row">
+      <div><label for="m-blocks">Blocks to simulate</label><input type="number" id="m-blocks" value="20000" min="500" max="500000"></div>
+      <div><label for="m-mean">Mean block time (s)</label><input type="number" id="m-mean" value="600" min="1"></div>
+    </div>
+    <button id="m-run">Simulate</button>
+    <div id="m-out" hidden>
+      <canvas id="m-chart" width="860" height="300"></canvas>
+      <table>
+        <thead><tr><th>Quantity</th><th>Theory (exponential)</th><th>Simulated</th></tr></thead>
+        <tbody id="m-tab"></tbody>
+      </table>
+      <p><strong>Blocks found per hour</strong> compared with the Poisson distribution (mean = 3600 / mean block time):</p>
+      <table>
+        <thead><tr><th>Blocks in the hour</th><th>Poisson probability</th><th>Observed frequency</th></tr></thead>
+        <tbody id="m-pois"></tbody>
+      </table>
+    </div>
+  </div>
+  <p>The simulation uses inverse-transform sampling: if U is uniform on (0,1), then <code>-mean &middot; ln(U)</code> is exponential with that mean.
+    The standard deviation of an exponential equals its mean, so block times are very irregular. Roughly 1 block in 400 takes more than an hour (<code>e<sup>-6</sup></code>),
+    and this is a property of the protocol, not a malfunction.</p>
+
+  <h2>3. How many confirmations? The attacker catch-up probability</h2>
+  <p>An attacker with a fraction <em>q</em> of the hash power secretly mines a competing chain, while honest miners (fraction <em>p = 1 - q</em>) extend the real one.
+    After a merchant waits for <em>z</em> confirmations, what is the chance the attacker ever catches up? Nakamoto's white paper (section 11) models the
+    attacker's progress as a Poisson variable with mean &lambda; = z&middot;q/p, and then uses the gambler's-ruin result
+    (catch-up from a deficit of k blocks with probability (q/p)<sup>k</sup> if q &lt; p):</p>
+  <pre>P(attacker catches up) = 1 - &Sigma;<sub>k=0..z</sub> [ &lambda;<sup>k</sup> e<sup>-&lambda;</sup> / k! ] &middot; ( 1 - (q/p)<sup>z-k</sup> )</pre>
+  <div class="card">
+    <table id="c-tab"><thead><tr><th>Confirmations z</th><th>q = 10%</th><th>q = 30%</th><th>q = 45%</th></tr></thead><tbody></tbody></table>
+  </div>
+  <p>The probability falls exponentially with z when q &lt; 1/2, which is why 6 confirmations (about an hour) became the common convention
+    for large payments; the table reproduces the values published by Nakamoto for q = 0.1 and q = 0.3. If q &ge; 1/2 the attacker always wins eventually.
+    Statistics also shows that "majority is not enough": Eyal and Sirer (2014) proved that a miner who withholds blocks strategically (<em>selfish mining</em>) can earn more than a fair share
+    with less than half of the hash power. The threshold is 1/3 if the attacker never wins a tie, 1/4 if it wins half of the ties, and any positive share if it always wins them.</p>
+
+  <h2>4. When randomness fails: ECDSA nonce reuse</h2>
+  <p>An ECDSA signature of a message hash <em>z</em> with private key <em>d</em> uses a fresh random nonce <em>k</em>:</p>
+  <pre>r = x(k&middot;G) mod n        s = k<sup>-1</sup> (z + r&middot;d) mod n</pre>
+  <p>Security needs <em>k</em> to be uniform on [1, n-1] and used once. If the same <em>k</em> signs two different messages, <em>r</em> is the same, and then
+    <em>k = (z<sub>1</sub> - z<sub>2</sub>) / (s<sub>1</sub> - s<sub>2</sub>)</em> and <em>d = (s<sub>1</sub>&middot;k - z<sub>1</sub>) / r</em>:
+    two public signatures give away the private key. This is not hypothetical: Sony's PS3 signing key was recovered in 2010 because the console used a constant nonce,
+    and in 2013 a flaw in Android's random generator produced repeated <em>r</em> values in Bitcoin transactions and allowed theft of funds.
+    Even a <em>biased</em> nonce is dangerous: knowing only a few bits of each nonce over many signatures lets an attacker solve a lattice problem and recover the key
+    (Howgrave-Graham and Smart, 2001; Breitner and Heninger, 2019, applied it to real Bitcoin and Ethereum signatures). This is exactly why the statistical quality of random sources is a security issue.</p>
+
+  <div class="card">
+    <strong>Demonstration with the curve of Homework 1</strong>
+    <p class="sub">Generates a random private key, signs two messages with the same nonce, and recovers the key from the public values only.</p>
+    <button id="n-run">Run the attack</button>
+    <table id="n-tab" hidden>
+      <tr><th>r</th><td class="mono-wrap" id="n-r"></td></tr>
+      <tr><th>s<sub>1</sub></th><td class="mono-wrap" id="n-s1"></td></tr>
+      <tr><th>s<sub>2</sub></th><td class="mono-wrap" id="n-s2"></td></tr>
+      <tr><th>Recovered nonce k</th><td class="mono-wrap" id="n-k"></td></tr>
+      <tr><th>Recovered private key d</th><td class="mono-wrap" id="n-d"></td></tr>
+      <tr><th>Equal to the real key?</th><td id="n-ok"></td></tr>
+    </table>
+  </div>
+
+  <h2>5. Statistics as an analysis and forensic tool</h2>
+  <ul>
+    <li><strong>De-anonymisation.</strong> Addresses are pseudonyms. Heuristics such as "all inputs of one transaction belong to the same owner" let analysts cluster addresses and
+      link them to exchanges or services (Meiklejohn et al., 2013). Privacy tools try to defeat these inferences, and the arms race is statistical.</li>
+    <li><strong>Anomaly and fraud detection.</strong> Benford's law says the leading digit d of many natural datasets appears with probability log<sub>10</sub>(1 + 1/d)
+      (30.1% for 1, 4.6% for 9). Amounts that deviate strongly can flag wash trading or fabricated data, though a deviation alone is never proof.</li>
+    <li><strong>Network health.</strong> Hash-rate estimates, orphan rates and block-interval statistics are used to detect partitions, large miner outages or abnormal mining behaviour.</li>
+    <li><strong>Proof of stake.</strong> In Ethereum the proposer and committees of each 12-second slot are drawn pseudo-randomly with weights given by stake, using a shared
+      randomness beacon (RANDAO). Fairness and resistance to manipulation of this randomness is again a statistical question.</li>
+    <li><strong>Zero-knowledge proofs.</strong> Systems such as Zcash use zk-SNARKs to prove a statement without revealing it; soundness is expressed as a negligible probability that a false statement is accepted.</li>
+  </ul>
+
+  <h2>6. Conclusion</h2>
+  <p>Cryptography gives blockchains their rules, and statistics tells us how reliably they work and where they break. Mining is a Poisson process, so block times are random and
+    confirmations are probabilistic guarantees. Signatures are only as strong as the randomness of their nonces. Many practical attacks target the probabilistic assumptions, not the mathematics of the primitives.
+    The toy hash of Homework 1 shows the same pattern at small scale: the algebra supplies the structure, and the statistical tests check that the output behaves as the security argument assumes.</p>
+
+  <h2>References</h2>
+  <ul>
+    <li>S. Nakamoto, <em>Bitcoin: A Peer-to-Peer Electronic Cash System</em>, 2008.</li>
+    <li>Certicom Research, <em>SEC 2: Recommended Elliptic Curve Domain Parameters</em> (secp256k1).</li>
+    <li>P. Wuille, J. Nick, T. Ruffing, BIP 340: <em>Schnorr Signatures for secp256k1</em>.</li>
+    <li>I. Eyal, E. G. Sirer, <em>Majority is not Enough: Bitcoin Mining is Vulnerable</em>, Financial Cryptography 2014.</li>
+    <li>J. Breitner, N. Heninger, <em>Biased Nonce Sense: Lattice Attacks against Weak ECDSA Signatures in Cryptocurrencies</em>, Financial Cryptography 2019.</li>
+    <li>N. Howgrave-Graham, N. Smart, <em>Lattice Attacks on Digital Signature Schemes</em>, Designs, Codes and Cryptography, 2001.</li>
+    <li>S. Meiklejohn et al., <em>A Fistful of Bitcoins: Characterizing Payments Among Men with No Names</em>, IMC 2013.</li>
+    <li>J. Maitin-Shepard, M. Tibouchi, D. Aranha, <em>Elliptic Curve Multiset Hash</em> (ECMH), 2016.</li>
+    <li>ethereum.org documentation: proof of stake, consensus and the Merge.</li>
+  </ul>
+
+  <footer>Homework 2 &middot; code: <code>js/sha256.js</code>, <code>js/ecc.js</code>, <code>js/hw2.js</code></footer>
+</main>
+<script src="js/sha256.js"></script>
+<script src="js/ecc.js"></script>
+<script src="js/hw2.js"></script>
+</body>
+</html>

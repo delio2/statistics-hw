@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Homework 1 - Toy hash on secp256k1</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav>
+  <a href="index.html">Home</a>
+  <a href="homework1.html">Homework 1</a>
+  <a href="homework2.html">Homework 2</a>
+</nav>
+<main>
+  <h1>Homework 1 - A toy hash on secp256k1</h1>
+  <p class="sub">Practical: build a toy example of hashing with elliptic curves (secp256k1) and study the statistical properties that a hash needs for cryptography.</p>
+
+  <h2>1. The curve</h2>
+  <p>secp256k1 is the curve used by Bitcoin and Ethereum for signatures. It is the set of points
+    <code>(x, y)</code> with coordinates in the field <code>F<sub>p</sub></code> that satisfy</p>
+  <pre>y&sup2; = x&sup3; + 7   (mod p)
+
+p = 2^256 - 2^32 - 977
+n = FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFE BAAEDCE6 AF48A03B BFD25E8C D0364141   (prime order of the group)
+G = (79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B 16F81798,
+     483ADA77 26A3C465 5DA4FBFC 0E1108A8 FD17B448 A6855419 9C47D08F FB10D4B8)</pre>
+  <p>Points can be added with the chord-and-tangent rule, and this makes them a group. Multiplying a point by an
+    integer <code>k</code> (<code>k&middot;G</code>) is fast, but going back from <code>k&middot;G</code> to <code>k</code> is the
+    discrete logarithm problem, believed to cost about 2<sup>128</sup> operations on this curve.
+    The code in <code>js/ecc.js</code> implements this arithmetic with JavaScript <code>BigInt</code>.</p>
+
+  <h2>2. The construction</h2>
+  <p>The toy hash maps a message to a <em>point</em> of the curve ("try and increment"):</p>
+  <pre>H(m):
+  for ctr = 0, 1, 2, ...
+      h = SHA-256( 0x01 || ctr || m )
+      x = h mod p
+      if x&sup3; + 7 is a square mod p:        (this happens for about half of the x)
+          y = sqrt(x&sup3; + 7)                (p = 3 mod 4, so y = (x&sup3;+7)^((p+1)/4) mod p)
+          choose the sign of y from a bit of SHA-256(0x02 || h)
+          return (x, y)</pre>
+  <p>The digest is the compressed point (33 bytes: <code>02</code>/<code>03</code> + x). For the statistics below, the
+    digest is its 256-bit x-coordinate.</p>
+  <p>Because the output lives in a group, hashes can be <em>added</em>. The hash of a multiset is the sum of the hashes of its
+    elements, <code>H({a,b}) = H(a) + H(b)</code>. This is the idea behind ECMH (elliptic curve multiset hash,
+    Maitin-Shepard, Tibouchi and Aranha, 2016), which gives an incremental hash: adding or removing one element
+    costs one point addition instead of rehashing everything. Ordinary hashes such as SHA-256 cannot do this.</p>
+
+  <h2>3. Try it</h2>
+  <div class="card">
+    <label for="msg">Message</label>
+    <input type="text" id="msg" value="hello cybersecurity">
+    <table>
+      <tr><th>Attempts (ctr + 1)</th><td id="o-att"></td></tr>
+      <tr><th>x</th><td class="mono-wrap" id="o-x"></td></tr>
+      <tr><th>y</th><td class="mono-wrap" id="o-y"></td></tr>
+      <tr><th>Digest (compressed)</th><td class="mono-wrap" id="o-dig"></td></tr>
+      <tr><th>On the curve?</th><td id="o-curve"></td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <strong>Multiset property</strong>
+    <div class="row">
+      <div><label for="ma">Element a</label><input type="text" id="ma" value="alice"></div>
+      <div><label for="mb">Element b</label><input type="text" id="mb" value="bob"></div>
+    </div>
+    <table>
+      <tr><th>H(a) + H(b)</th><td class="mono-wrap" id="s-ab"></td></tr>
+      <tr><th>H(b) + H(a)</th><td class="mono-wrap" id="s-ba"></td></tr>
+      <tr><th>Equal?</th><td id="s-eq"></td></tr>
+    </table>
+  </div>
+
+  <h2>4. Correctness checks</h2>
+  <p>Before trusting the statistics, the implementation is checked against known values.</p>
+  <table id="selftest"><thead><tr><th>Check</th><th>Result</th></tr></thead><tbody></tbody></table>
+
+  <h2>5. Statistical properties</h2>
+  <p>A good hash should behave like a random function. Four properties are tested. Each one compares what is observed with
+    the value expected from a perfectly random 256-bit output.</p>
+  <ul>
+    <li><strong>Avalanche.</strong> Flipping one input bit should flip each output bit with probability 1/2. The number of flipped
+      bits is then Binomial(256, 1/2): mean 128, standard deviation 8.</li>
+    <li><strong>Bit balance.</strong> Each output bit should be 1 half of the time. For each of the 256 positions the count of ones
+      is standardised into a z-score; with 256 positions we expect about 0.7 of them beyond |z| = 3.</li>
+    <li><strong>Byte uniformity.</strong> The 256 byte values should be equally frequent: chi-square test with 255 degrees of freedom
+      (p-value from the Wilson-Hilferty approximation).</li>
+    <li><strong>Collisions.</strong> Truncating the output to k bits, the number of colliding pairs among N outputs should be close to
+      N(N-1)/2 &middot; 2<sup>-k</sup> (birthday paradox).</li>
+  </ul>
+  <p>As a control, the same tests are run on a deliberately bad hash (a polynomial hash
+    <code>&Sigma; b<sub>i</sub>&middot;257<sup>i</sup> mod 2<sup>256</sup></code>). If the tests are meaningful, the toy hash should pass
+    and the control should fail.</p>
+
+  <div class="card">
+    <div class="row">
+      <div><label for="p-n">Samples N</label><input type="number" id="p-n" value="3000" min="200" max="20000"></div>
+      <div><label for="p-len">Message length (bytes)</label><input type="number" id="p-len" value="16" min="1" max="256"></div>
+      <div><label for="p-k">Truncated bits k</label><input type="number" id="p-k" value="16" min="8" max="30"></div>
+    </div>
+    <button id="run">Run the tests</button>
+    <progress id="prog" value="0" max="1" hidden></progress>
+  </div>
+
+  <div id="results" hidden>
+    <table>
+      <thead><tr><th>Test</th><th>Ideal</th><th>Toy ECC hash</th><th>Control (bad hash)</th></tr></thead>
+      <tbody id="res-body"></tbody>
+    </table>
+    <h3>Avalanche distribution</h3>
+    <p class="sub">Bars: observed number of flipped output bits. Line: Binomial(256, 1/2) scaled to N.</p>
+    <canvas id="chart" width="860" height="320"></canvas>
+  </div>
+
+  <h2>6. Discussion</h2>
+  <p>The toy hash passes all four tests, and the control fails them in an obvious way: its output is biased
+    (the high bits never change for short messages), so the bit-balance and chi-square tests reject it immediately and
+    it collides far too often. This shows the tests have enough power to detect a bad function.</p>
+  <p>It is important to be honest about <em>why</em> the toy hash passes. The x-coordinate is, up to a negligible reduction mod p, the output
+    of SHA-256, so its statistical quality is inherited from SHA-256. The elliptic curve does not improve it. What the curve adds is a
+    group structure: the algebraic property <code>H(a)+H(b)</code> above, and a security argument that reduces to
+    the hardness of discrete-log-type problems for the multiset version. Passing statistical tests is necessary but not sufficient:
+    they cannot prove collision or preimage resistance, they only fail to find defects.</p>
+  <p>Practical limits of this toy: it is slower than SHA-256 (a square root modulo p per attempt, about two attempts on average),
+    the number of attempts is variable (so it is not constant time), and the code is written for clarity, not for real use.</p>
+
+  <footer>Homework 1 &middot; code: <code>js/sha256.js</code>, <code>js/ecc.js</code>, <code>js/stats.js</code>, <code>js/hw1.js</code></footer>
+</main>
+<script src="js/sha256.js"></script>
+<script src="js/ecc.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/hw1.js"></script>
+</body>
+</html>
