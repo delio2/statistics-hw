@@ -3,7 +3,7 @@
 Sito statico (HTML + JS puro, nessuna dipendenza). Si apre anche con doppio clic su `index.html`.
 
 ## Contenuto
-- `index.html` - home, da qui si linka ogni homework. **Va compilato il nome e la matricola.**
+- `index.html` - home, da qui si linka ogni homework. Nome gia' inserito; **la matricola va aggiunta dopo l'immatricolazione** (riga "Student ID").
 - `homework1.html` - hash "toy" su secp256k1 + test statistici (avalanche, bit balance, chi-quadro, collisioni).
 - `homework2.html` - ricerca su crittografia e statistica nelle blockchain, con due simulazioni.
 - `js/` - `sha256.js`, `ecc.js` (curva), `stats.js` (test), `hw1.js`, `hw2.js`.
