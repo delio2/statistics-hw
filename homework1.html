@@ -29,6 +29,23 @@ G = (79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B 16F81798,
     integer <code>k</code> (<code>k&middot;G</code>) is fast, but going back from <code>k&middot;G</code> to <code>k</code> is the
     discrete logarithm problem, believed to cost about 2<sup>128</sup> operations on this curve.
     The code in <code>js/ecc.js</code> implements this arithmetic with JavaScript <code>BigInt</code>.</p>
+  <p>The core of it is the group law, i.e. how two points are added (<code>js/ecc.js</code>):</p>
+  <pre><code>function add(a, b) {
+  if (a === null) return b;
+  if (b === null) return a;
+  let lambda;
+  if (a.x === b.x) {
+    if (mod(a.y + b.y) === 0n) return null; // a = -b
+    lambda = mod(3n * a.x * a.x * inv(2n * a.y));
+  } else {
+    lambda = mod((b.y - a.y) * inv(b.x - a.x));
+  }
+  const x = mod(lambda * lambda - a.x - b.x);
+  return { x, y: mod(lambda * (a.x - x) - a.y) };
+}</code></pre>
+  <p><code>lambda</code> is the slope of the line through the two points (the tangent when the points are equal), and the sum is the
+    reflection of the third intersection of that line with the curve. Every division is done modulo p by multiplying by the modular
+    inverse (<code>inv</code>, extended Euclid algorithm). <code>null</code> stands for the point at infinity, the neutral element of the group.</p>
 
   <h2>2. The construction</h2>
   <p>The toy hash maps a message to a <em>point</em> of the curve ("try and increment"):</p>
@@ -40,6 +57,27 @@ G = (79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B 16F81798,
           y = sqrt(x&sup3; + 7)                (p = 3 mod 4, so y = (x&sup3;+7)^((p+1)/4) mod p)
           choose the sign of y from a bit of SHA-256(0x02 || h)
           return (x, y)</pre>
+  <p>The same procedure in JavaScript (<code>js/ecc.js</code>):</p>
+  <pre><code>function hashToPoint(msg) {
+  for (let ctr = 0; ; ctr++) {
+    const pre = new Uint8Array(5 + msg.length);
+    pre[0] = 1;
+    new DataView(pre.buffer).setUint32(1, ctr);
+    pre.set(msg, 5);
+    const h = sha256(pre);
+    const x = bytesToBig(h) % P;
+    const rhs = mod(x * x * x + B);
+    const y0 = powmod(rhs, SQRT_EXP);
+    if (mod(y0 * y0) !== rhs) continue;
+    const signBit = sha256(Uint8Array.from([2, ...h]))[0] &amp; 1;
+    const y = (y0 &amp; 1n) === BigInt(signBit) ? y0 : P - y0;
+    return { point: { x, y }, counter: ctr };
+  }
+}</code></pre>
+  <p>The loop tries <code>ctr = 0, 1, 2, ...</code> until <code>x&sup3; + 7</code> has a square root. The root is computed with one modular
+    exponentiation (<code>powmod</code>), and the check <code>y0&sup2; = rhs</code> rejects the values of x that have none.
+    The sign of y comes from a second, independent SHA-256, so it does not depend on the low bit of x.
+    The hash of a multiset is then just the sum of the points, <code>acc = add(acc, hashToPoint(m).point)</code> for each element.</p>
   <p>The digest is the compressed point (33 bytes: <code>02</code>/<code>03</code> + x). For the statistics below, the
     digest is its 256-bit x-coordinate.</p>
   <p>Because the output lives in a group, hashes can be <em>added</em>. The hash of a multiset is the sum of the hashes of its
@@ -93,6 +131,20 @@ G = (79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B 16F81798,
   <p>As a control, the same tests are run on a deliberately bad hash (a polynomial hash
     <code>&Sigma; b<sub>i</sub>&middot;257<sup>i</sup> mod 2<sup>256</sup></code>). If the tests are meaningful, the toy hash should pass
     and the control should fail.</p>
+  <p>The two central computations of the experiment (<code>js/stats.js</code>). For the avalanche test, a random message is hashed, one random bit is flipped,
+    and the number of output bits that change (the Hamming distance) is recorded:</p>
+  <pre><code>const m = randomBytes(L);
+const h = hashFn(m);
+
+const m2 = Uint8Array.from(m);
+const bit = Math.floor(Math.random() * L * 8);
+m2[bit &gt;&gt; 3] ^= 1 &lt;&lt; (bit &amp; 7);
+const d = hamming(h, hashFn(m2));
+hist[d]++; sum += d; sumSq += d * d;</code></pre>
+  <p>For byte uniformity, the observed count of each byte value is compared with the expected count, and the chi-square statistic is turned into a p-value:</p>
+  <pre><code>const expectedBytes = (N * 32) / 256;
+const chi = byteCount.reduce((a, c) =&gt; a + (c - expectedBytes) ** 2 / expectedBytes, 0);
+const pChi = chi2PValue(chi, 255);</code></pre>
 
   <div class="card">
     <div class="row">

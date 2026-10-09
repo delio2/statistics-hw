@@ -67,6 +67,8 @@
   <p>The simulation uses inverse-transform sampling: if U is uniform on (0,1), then <code>-mean &middot; ln(U)</code> is exponential with that mean.
     The standard deviation of an exponential equals its mean, so block times are very irregular. Roughly 1 block in 400 takes more than an hour (<code>e<sup>-6</sup></code>),
     and this is a property of the protocol, not a malfunction.</p>
+  <p>The sampling line of the simulation (<code>js/hw2.js</code>); <code>1 - Math.random()</code> avoids taking the logarithm of 0:</p>
+  <pre><code>for (let i = 0; i &lt; n; i++) times[i] = -mean * Math.log(1 - Math.random());   // 1-U is in (0,1]</code></pre>
 
   <h2>3. How many confirmations? The attacker catch-up probability</h2>
   <p>An attacker with a fraction <em>q</em> of the hash power secretly mines a competing chain, while honest miners (fraction <em>p = 1 - q</em>) extend the real one.
@@ -74,6 +76,18 @@
     attacker's progress as a Poisson variable with mean &lambda; = z&middot;q/p, and then uses the gambler's-ruin result
     (catch-up from a deficit of k blocks with probability (q/p)<sup>k</sup> if q &lt; p):</p>
   <pre>P(attacker catches up) = 1 - &Sigma;<sub>k=0..z</sub> [ &lambda;<sup>k</sup> e<sup>-&lambda;</sup> / k! ] &middot; ( 1 - (q/p)<sup>z-k</sup> )</pre>
+  <p>Implementation (<code>js/hw2.js</code>). The Poisson term is built iteratively, starting from <code>e<sup>-&lambda;</sup></code> and multiplying by <code>&lambda;/k</code> at each step, so no factorial is needed:</p>
+  <pre><code>function catchUp(q, z) {
+  const p = 1 - q;
+  if (q &gt;= p) return 1;
+  const lam = (z * q) / p;
+  let pois = Math.exp(-lam), sum = 0;
+  for (let k = 0; k &lt;= z; k++) {
+    if (k &gt; 0) pois *= lam / k;
+    sum += pois * (1 - Math.pow(q / p, z - k));
+  }
+  return 1 - sum;
+}</code></pre>
   <div class="card">
     <table id="c-tab"><thead><tr><th>Confirmations z</th><th>q = 10%</th><th>q = 30%</th><th>q = 45%</th></tr></thead><tbody></tbody></table>
   </div>
@@ -91,6 +105,15 @@
     and in 2013 a flaw in Android's random generator produced repeated <em>r</em> values in Bitcoin transactions and allowed theft of funds.
     Even a <em>biased</em> nonce is dangerous: knowing only a few bits of each nonce over many signatures lets an attacker solve a lattice problem and recover the key
     (Howgrave-Graham and Smart, 2001; Breitner and Heninger, 2019, applied it to real Bitcoin and Ethereum signatures). This is exactly why the statistical quality of random sources is a security issue.</p>
+  <p>The demonstration below signs two messages with the same nonce and then recovers the key using only public values (<code>js/hw2.js</code>):</p>
+  <pre><code>const r = mul(k).x % N;
+const kinv = inv(k, N);
+const s1 = mod(kinv * (z1 + r * d), N);
+const s2 = mod(kinv * (z2 + r * d), N);
+
+// attacker's side: only (z1, z2, r, s1, s2) are used
+const kRec = mod((z1 - z2) * inv(s1 - s2, N), N);
+const dRec = mod((s1 * kRec - z1) * inv(r, N), N);</code></pre>
 
   <div class="card">
     <strong>Demonstration with the curve of Homework 1</strong>
