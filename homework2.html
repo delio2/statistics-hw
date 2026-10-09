@@ -82,7 +82,7 @@
   return 1 - sum;
 }</code></pre>
   <div class="card">
-    <table id="c-tab"><thead><tr><th>Confirmations z</th><th>q = 10%</th><th>q = 30%</th><th>q = 45%</th></tr></thead><tbody></tbody></table>
+    <table id="c-tab"><thead><tr><th>Confirmations z</th><th class="num">q = 10%</th><th class="num">q = 30%</th><th class="num">q = 45%</th></tr></thead><tbody></tbody></table>
   </div>
   <p>The probability falls exponentially with z when q &lt; 1/2, which is why 6 confirmations (about an hour) became the common convention
     for large payments; the table reproduces the values published by Nakamoto for q = 0.1 and q = 0.3. If q &ge; 1/2 the attacker always wins eventually.
@@ -147,7 +147,6 @@ const dRec = mod((s1 * kRec - z1) * inv(r, N), N);</code></pre>
     <li>J. Breitner, N. Heninger, <em>Biased Nonce Sense: Lattice Attacks against Weak ECDSA Signatures in Cryptocurrencies</em>, Financial Cryptography 2019.</li>
     <li>N. Howgrave-Graham, N. Smart, <em>Lattice Attacks on Digital Signature Schemes</em>, Designs, Codes and Cryptography, 2001.</li>
     <li>S. Meiklejohn et al., <em>A Fistful of Bitcoins: Characterizing Payments Among Men with No Names</em>, IMC 2013.</li>
-    <li>J. Maitin-Shepard, M. Tibouchi, D. Aranha, <em>Elliptic Curve Multiset Hash</em> (ECMH), 2016.</li>
     <li>ethereum.org documentation: Proof-of-stake and The Merge.</li>
   </ul>
 

@@ -75,7 +75,7 @@ G = (79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B 16F81798,
   <p>The loop increases <code>ctr</code> until <code>x&sup3; + 7</code> has a square root. The root is found with one modular exponentiation (<code>powmod</code>); if squaring it does not give back <code>x&sup3; + 7</code>, this x has no point on the curve and the next <code>ctr</code> is tried. The sign of y comes from a second SHA-256, so that it does not depend on x.</p>
   <p>The digest is the compressed point (33 bytes: <code>02</code>/<code>03</code> + x). For the statistics below, the
     digest is its 256-bit x-coordinate.</p>
-  <p>Since the output is a point of a group, hashes can be <em>added</em>: the hash of a set is the sum of the hashes of its elements, <code>H({a,b}) = H(a) + H(b)</code>. This idea is called ECMH (elliptic curve multiset hash, Maitin-Shepard, Tibouchi and Aranha, 2016). It lets you update the hash with one point addition when an element is added or removed, which a normal hash like SHA-256 cannot do.</p>
+  <p>Since the output is a point of a group, hashes can be <em>added</em>: the hash of a set is the sum of the hashes of its elements, <code>H({a,b}) = H(a) + H(b)</code>. This idea is called ECMH (elliptic curve multiset hash, Maitin-Shepard, Tibouchi and Aranha, 2016). The paper uses binary curves for speed; my version uses secp256k1 and try-and-increment, which is simpler. ECMH lets you update the hash with one point addition when an element is added or removed, which a normal hash like SHA-256 cannot do.</p>
 
   <h2>3. Try it</h2>
   <div class="card">
@@ -166,6 +166,15 @@ const pChi = chi2PValue(chi, 255);</code></pre>
     they cannot prove collision or preimage resistance, they only fail to find defects.</p>
   <p>Limits: the toy hash is slower than SHA-256 (a square root mod p for each attempt, about two attempts on average), the number of attempts is not fixed,
     so it is not constant time, and the code is written to be clear, not to be used for real.</p>
+
+  <h2>References</h2>
+  <ul>
+    <li>Certicom Research, <em>SEC 2: Recommended Elliptic Curve Domain Parameters</em> (secp256k1).</li>
+    <li>NIST, <em>FIPS 180-4: Secure Hash Standard</em> (SHA-256).</li>
+    <li>J. Maitin-Shepard, M. Tibouchi, D. Aranha, <em>Elliptic Curve Multiset Hash</em>, The Computer Journal 60(4), 2017 (arXiv:1601.06502).</li>
+    <li>M. Abramowitz, I. Stegun, <em>Handbook of Mathematical Functions</em>, 1964, formula 7.1.26 (approximation of erf, used for the normal CDF).</li>
+    <li>E. B. Wilson, M. M. Hilferty, <em>The distribution of chi-square</em>, PNAS 17(12), 1931 (approximation used for the chi-square p-value).</li>
+  </ul>
 
   <footer>Homework 1 &middot; code: <code>js/sha256.js</code>, <code>js/ecc.js</code>, <code>js/stats.js</code>, <code>js/hw1.js</code></footer>
 </main>

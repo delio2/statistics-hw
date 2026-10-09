@@ -1,21 +1,15 @@
-# Sito homework Statistics
+# Statistics for Cybersecurity - Homework
 
-Sito statico (HTML + JS puro, nessuna dipendenza). Si apre anche con doppio clic su `index.html`.
+MSc Cybersecurity, Sapienza University of Rome, A.Y. 2026/27. Author: Delio Errosa.
 
-## Contenuto
-- `index.html` - home, da qui si linka ogni homework. Nome gia' inserito; **la matricola va aggiunta dopo l'immatricolazione** (riga "Student ID").
-- `homework1.html` - hash "toy" su secp256k1 + test statistici (avalanche, bit balance, chi-quadro, collisioni).
-- `homework2.html` - ricerca su crittografia e statistica nelle blockchain, con due simulazioni.
-- `js/` - `sha256.js`, `ecc.js` (curva), `stats.js` (test), `hw1.js`, `hw2.js`.
+Plain HTML and JavaScript, no libraries and no build step. Open `index.html` in a browser, or use the published version:
+https://delio2.github.io/statistics-hw/
 
-## Da sapere prima di consegnare
-- Il testo di HW1 e' quello incollato in chat da un collega: "Practical: hashing con ECC (SECP256K1) e proprieta' statistiche; Research: applicazioni moderne di crittografia e statistica nelle blockchain piu' famose".
-  Il secondo messaggio dell'8/10 non era nella chat, quindi **HW2 qui e' la parte "Research" dello stesso testo**. Se il testo vero del secondo homework e' diverso, va rifatta la pagina.
-- Il prof non guarda il codice, ma le pagine contengono gia' codice funzionante e spiegazioni.
+| Page | Content |
+| --- | --- |
+| `homework1.html` | A toy hash built on the elliptic curve secp256k1 and a statistical study of its output |
+| `homework2.html` | Cryptography and statistics in Bitcoin and Ethereum, with two small simulations |
 
-## Pubblicazione (GitHub Pages)
-1. Crea un repository pubblico, per esempio `statistics-hw`.
-2. Carica il contenuto di questa cartella `sito/` nella radice del repo.
-3. Settings -> Pages -> Deploy from a branch -> `main` / root.
-4. Il link sara' `https://<utente>.github.io/statistics-hw/`. Nel foglio del prof metti il link della pagina di ogni homework
-   (`.../homework1.html`, `.../homework2.html`) o della home.
+Code (`js/`): `sha256.js` (SHA-256), `ecc.js` (secp256k1 arithmetic and the toy hash), `stats.js` (statistical tests), `hw1.js` and `hw2.js` (page logic).
+
+Educational code: not constant time, do not use it for real keys.

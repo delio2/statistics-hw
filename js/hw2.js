@@ -13,7 +13,7 @@
 
   function drawIntervals(times, mean) {
     const cv = $('m-chart'), ctx = cv.getContext('2d');
-    const W = cv.width, H = cv.height, pad = { l: 44, r: 12, t: 12, b: 32 };
+    const W = cv.width, H = cv.height, pad = { l: 44, r: 12, t: 12, b: 42 };
     const c = css(), col = (v) => c.getPropertyValue(v).trim();
     ctx.clearRect(0, 0, W, H);
     const xmax = mean * 5, bins = 50, bw = xmax / bins;
@@ -27,8 +27,10 @@
 
     ctx.strokeStyle = col('--line'); ctx.fillStyle = col('--muted'); ctx.font = '12px system-ui';
     ctx.beginPath(); ctx.moveTo(pad.l, H - pad.b); ctx.lineTo(W - pad.r, H - pad.b); ctx.stroke();
-    for (let i = 0; i <= 5; i++) ctx.fillText(Math.round((i * mean) / 60) + ' min', X(i * mean) - 14, H - pad.b + 16);
-    ctx.fillText('time between blocks', W / 2 - 55, H - 4);
+    ctx.textAlign = 'center';
+    for (let i = 0; i <= 5; i++) ctx.fillText(Math.round((i * mean) / 60) + ' min', Math.min(X(i * mean), W - 22), H - pad.b + 16);
+    ctx.fillText('time between blocks', W / 2, H - 6);
+    ctx.textAlign = 'left';
     ctx.fillText('density', 2, pad.t + 8);
 
     ctx.globalAlpha = 0.6; ctx.fillStyle = col('--accent');
