@@ -17,9 +17,7 @@
   <p class="sub">Research: modern applications of cryptography and statistics in Bitcoin and Ethereum, with two small simulations.</p>
 
   <h2>1. Overview</h2>
-  <p>A blockchain is a replicated ledger that strangers agree on without a central authority. Two toolboxes make this work.
-    Cryptography provides the objects (hashes, signatures, commitments). Statistics and probability explain how the system
-    behaves and how it can be attacked, because mining, randomness, network delay and attacker power are all random quantities.</p>
+  <p>A blockchain is a ledger copied on many computers that do not trust each other. Cryptography gives the building blocks (hashes, signatures). Statistics and probability describe how the system behaves and how it can be attacked, because mining, randomness and attacker power are random quantities.</p>
   <table>
     <thead><tr><th>Building block</th><th>Bitcoin</th><th>Ethereum</th><th>Statistical side</th></tr></thead>
     <tbody>
@@ -29,7 +27,7 @@
       <tr><td>Address</td><td>RIPEMD-160(SHA-256(public key)) (and variants)</td><td>last 20 bytes of Keccak-256(public key)</td><td>Collisions negligible; low-entropy keys are not</td></tr>
     </tbody>
   </table>
-  <p>The elliptic curve of Homework 1 is the same curve both systems use to prove that a payment was authorised by the owner of a key.</p>
+  <p>The curve of Homework 1 is the one both systems use to sign transactions.</p>
 
   <h2>2. Mining as a Poisson process</h2>
   <p>To mine a Bitcoin block a miner varies a nonce until <code>SHA-256(SHA-256(header))</code>, read as a number, is below a target <em>T</em>.
@@ -39,10 +37,7 @@
     <li>the number of blocks found in a time window is approximately <strong>Poisson</strong>, with rate &lambda; = (hash rate) &middot; p;</li>
     <li>the time between blocks is <strong>exponential</strong> with mean 1/&lambda;, and it is <strong>memoryless</strong>: having waited 20 minutes does not make the next block closer.</li>
   </ul>
-  <p>The protocol aims at a mean of 10 minutes and re-adjusts the difficulty every 2016 blocks (about two weeks). The expected number of hashes per block is
-    <em>D &middot; 2<sup>32</sup></em>, where D is the difficulty, so the network hash rate can be estimated as <em>D &middot; 2<sup>32</sup> / 600</em> hashes per second.
-    The estimate comes from a finite sample of block times: the sum of 2016 exponential intervals has relative standard deviation 1/&radic;2016 &asymp; 2.2%,
-    which is the statistical error of each difficulty adjustment.</p>
+  <p>The protocol aims at 10 minutes per block on average and adjusts the difficulty every 2016 blocks (about two weeks). A block needs on average <em>D &middot; 2<sup>32</sup></em> hashes, where D is the difficulty, so the network hash rate is about <em>D &middot; 2<sup>32</sup> / 600</em> hashes per second. This is an estimate from a finite sample: the sum of 2016 exponential times has relative standard deviation 1/&radic;2016 &asymp; 2.2%, which is the statistical error of each difficulty adjustment.</p>
 
   <div class="card">
     <strong>Simulation: block arrival times</strong>
@@ -64,9 +59,7 @@
       </table>
     </div>
   </div>
-  <p>The simulation uses inverse-transform sampling: if U is uniform on (0,1), then <code>-mean &middot; ln(U)</code> is exponential with that mean.
-    The standard deviation of an exponential equals its mean, so block times are very irregular. Roughly 1 block in 400 takes more than an hour (<code>e<sup>-6</sup></code>),
-    and this is a property of the protocol, not a malfunction.</p>
+  <p>The simulation uses inverse-transform sampling: if U is uniform on (0,1), then <code>-mean &middot; ln(U)</code> is exponential with that mean. The standard deviation of an exponential equals its mean, so block times are very irregular. About 1 block in 400 takes more than an hour (<code>e<sup>-6</sup></code>), and that is normal for the protocol.</p>
   <p>The sampling line of the simulation (<code>js/hw2.js</code>); <code>1 - Math.random()</code> avoids taking the logarithm of 0:</p>
   <pre><code>for (let i = 0; i &lt; n; i++) times[i] = -mean * Math.log(1 - Math.random());   // 1-U is in (0,1]</code></pre>
 
@@ -101,10 +94,10 @@
   <pre>r = x(k&middot;G) mod n        s = k<sup>-1</sup> (z + r&middot;d) mod n</pre>
   <p>Security needs <em>k</em> to be uniform on [1, n-1] and used once. If the same <em>k</em> signs two different messages, <em>r</em> is the same, and then
     <em>k = (z<sub>1</sub> - z<sub>2</sub>) / (s<sub>1</sub> - s<sub>2</sub>)</em> and <em>d = (s<sub>1</sub>&middot;k - z<sub>1</sub>) / r</em>:
-    two public signatures give away the private key. This is not hypothetical: Sony's PS3 signing key was recovered in 2010 because the console used a constant nonce,
+    two public signatures give away the private key. This really happened: Sony's PS3 signing key was recovered in 2010 because the console used a constant nonce,
     and in 2013 a flaw in Android's random generator produced repeated <em>r</em> values in Bitcoin transactions and allowed theft of funds.
     Even a <em>biased</em> nonce is dangerous: knowing only a few bits of each nonce over many signatures lets an attacker solve a lattice problem and recover the key
-    (Howgrave-Graham and Smart, 2001; Breitner and Heninger, 2019, applied it to real Bitcoin and Ethereum signatures). This is exactly why the statistical quality of random sources is a security issue.</p>
+    (Howgrave-Graham and Smart, 2001; Breitner and Heninger, 2019, applied it to real Bitcoin and Ethereum signatures). So the quality of the random numbers is a security problem, not just a detail of statistics.</p>
   <p>The demonstration below signs two messages with the same nonce and then recovers the key using only public values (<code>js/hw2.js</code>):</p>
   <pre><code>const r = mul(k).x % N;
 const kinv = inv(k, N);
@@ -129,22 +122,21 @@ const dRec = mod((s1 * kRec - z1) * inv(r, N), N);</code></pre>
     </table>
   </div>
 
-  <h2>5. Statistics as an analysis and forensic tool</h2>
+  <h2>5. Statistics as an analysis tool</h2>
   <ul>
     <li><strong>De-anonymisation.</strong> Addresses are pseudonyms. Heuristics such as "all inputs of one transaction belong to the same owner" let analysts cluster addresses and
       link them to exchanges or services (Meiklejohn et al., 2013). Privacy tools try to defeat these inferences, and the arms race is statistical.</li>
     <li><strong>Anomaly and fraud detection.</strong> Benford's law says the leading digit d of many natural datasets appears with probability log<sub>10</sub>(1 + 1/d)
       (30.1% for 1, 4.6% for 9). Amounts that deviate strongly can flag wash trading or fabricated data, though a deviation alone is never proof.</li>
-    <li><strong>Network health.</strong> Hash-rate estimates, orphan rates and block-interval statistics are used to detect partitions, large miner outages or abnormal mining behaviour.</li>
-    <li><strong>Proof of stake.</strong> In Ethereum the proposer and committees of each 12-second slot are drawn pseudo-randomly with weights given by stake, using a shared
-      randomness beacon (RANDAO). Fairness and resistance to manipulation of this randomness is again a statistical question.</li>
-    <li><strong>Zero-knowledge proofs.</strong> Systems such as Zcash use zk-SNARKs to prove a statement without revealing it; soundness is expressed as a negligible probability that a false statement is accepted.</li>
+    <li><strong>Proof of stake.</strong> In Ethereum the block proposer of each 12-second slot is chosen pseudo-randomly (the probability depends on the stake of the validator)
+      and the validators are shuffled into committees, using a shared source of randomness (RANDAO). Whether this randomness is fair and hard to manipulate is again a statistical question.</li>
   </ul>
 
   <h2>6. Conclusion</h2>
-  <p>Cryptography gives blockchains their rules, and statistics tells us how reliably they work and where they break. Mining is a Poisson process, so block times are random and
-    confirmations are probabilistic guarantees. Signatures are only as strong as the randomness of their nonces. Many practical attacks target the probabilistic assumptions, not the mathematics of the primitives.
-    The toy hash of Homework 1 shows the same pattern at small scale: the algebra supplies the structure, and the statistical tests check that the output behaves as the security argument assumes.</p>
+  <p>In this homework I looked at how cryptography and statistics work together in Bitcoin and Ethereum. Mining is a Poisson process, so block times are random
+    and a confirmation is only a probabilistic guarantee. Signatures are as strong as the randomness of their nonces, and many real attacks hit the random numbers,
+    not the mathematics of the algorithms. The toy hash of Homework 1 follows the same idea on a small scale: the algebra gives the structure and the statistical tests check
+    that the output behaves as the security argument assumes.</p>
 
   <h2>References</h2>
   <ul>
@@ -156,7 +148,7 @@ const dRec = mod((s1 * kRec - z1) * inv(r, N), N);</code></pre>
     <li>N. Howgrave-Graham, N. Smart, <em>Lattice Attacks on Digital Signature Schemes</em>, Designs, Codes and Cryptography, 2001.</li>
     <li>S. Meiklejohn et al., <em>A Fistful of Bitcoins: Characterizing Payments Among Men with No Names</em>, IMC 2013.</li>
     <li>J. Maitin-Shepard, M. Tibouchi, D. Aranha, <em>Elliptic Curve Multiset Hash</em> (ECMH), 2016.</li>
-    <li>ethereum.org documentation: proof of stake, consensus and the Merge.</li>
+    <li>ethereum.org documentation: Proof-of-stake and The Merge.</li>
   </ul>
 
   <footer>Homework 2 &middot; code: <code>js/sha256.js</code>, <code>js/ecc.js</code>, <code>js/hw2.js</code></footer>

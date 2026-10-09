@@ -28,8 +28,8 @@ G = (79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B 16F81798,
   <p>Points can be added with the chord-and-tangent rule, and this makes them a group. Multiplying a point by an
     integer <code>k</code> (<code>k&middot;G</code>) is fast, but going back from <code>k&middot;G</code> to <code>k</code> is the
     discrete logarithm problem, believed to cost about 2<sup>128</sup> operations on this curve.
-    The code in <code>js/ecc.js</code> implements this arithmetic with JavaScript <code>BigInt</code>.</p>
-  <p>The core of it is the group law, i.e. how two points are added (<code>js/ecc.js</code>):</p>
+    I wrote this arithmetic from scratch in <code>js/ecc.js</code> with JavaScript <code>BigInt</code>, without any library.</p>
+  <p>The main part is the addition of two points (<code>js/ecc.js</code>):</p>
   <pre><code>function add(a, b) {
   if (a === null) return b;
   if (b === null) return a;
@@ -43,12 +43,10 @@ G = (79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B 16F81798,
   const x = mod(lambda * lambda - a.x - b.x);
   return { x, y: mod(lambda * (a.x - x) - a.y) };
 }</code></pre>
-  <p><code>lambda</code> is the slope of the line through the two points (the tangent when the points are equal), and the sum is the
-    reflection of the third intersection of that line with the curve. Every division is done modulo p by multiplying by the modular
-    inverse (<code>inv</code>, extended Euclid algorithm). <code>null</code> stands for the point at infinity, the neutral element of the group.</p>
+  <p><code>lambda</code> is the slope of the line through the two points (or of the tangent, when they are the same point). The sum is the mirror image of the third point where that line meets the curve. Divisions are done mod p with the modular inverse (<code>inv</code>, extended Euclid). <code>null</code> is the point at infinity, which works as zero.</p>
 
   <h2>2. The construction</h2>
-  <p>The toy hash maps a message to a <em>point</em> of the curve ("try and increment"):</p>
+  <p>My toy hash maps a message to a <em>point</em> of the curve. The method is called "try and increment":</p>
   <pre>H(m):
   for ctr = 0, 1, 2, ...
       h = SHA-256( 0x01 || ctr || m )
@@ -57,7 +55,7 @@ G = (79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B 16F81798,
           y = sqrt(x&sup3; + 7)                (p = 3 mod 4, so y = (x&sup3;+7)^((p+1)/4) mod p)
           choose the sign of y from a bit of SHA-256(0x02 || h)
           return (x, y)</pre>
-  <p>The same procedure in JavaScript (<code>js/ecc.js</code>):</p>
+  <p>This is the real code (<code>js/ecc.js</code>):</p>
   <pre><code>function hashToPoint(msg) {
   for (let ctr = 0; ; ctr++) {
     const pre = new Uint8Array(5 + msg.length);
@@ -74,16 +72,10 @@ G = (79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B 16F81798,
     return { point: { x, y }, counter: ctr };
   }
 }</code></pre>
-  <p>The loop tries <code>ctr = 0, 1, 2, ...</code> until <code>x&sup3; + 7</code> has a square root. The root is computed with one modular
-    exponentiation (<code>powmod</code>), and the check <code>y0&sup2; = rhs</code> rejects the values of x that have none.
-    The sign of y comes from a second, independent SHA-256, so it does not depend on the low bit of x.
-    The hash of a multiset is then just the sum of the points, <code>acc = add(acc, hashToPoint(m).point)</code> for each element.</p>
+  <p>The loop increases <code>ctr</code> until <code>x&sup3; + 7</code> has a square root. The root is found with one modular exponentiation (<code>powmod</code>); if squaring it does not give back <code>x&sup3; + 7</code>, this x has no point on the curve and the next <code>ctr</code> is tried. The sign of y comes from a second SHA-256, so that it does not depend on x.</p>
   <p>The digest is the compressed point (33 bytes: <code>02</code>/<code>03</code> + x). For the statistics below, the
     digest is its 256-bit x-coordinate.</p>
-  <p>Because the output lives in a group, hashes can be <em>added</em>. The hash of a multiset is the sum of the hashes of its
-    elements, <code>H({a,b}) = H(a) + H(b)</code>. This is the idea behind ECMH (elliptic curve multiset hash,
-    Maitin-Shepard, Tibouchi and Aranha, 2016), which gives an incremental hash: adding or removing one element
-    costs one point addition instead of rehashing everything. Ordinary hashes such as SHA-256 cannot do this.</p>
+  <p>Since the output is a point of a group, hashes can be <em>added</em>: the hash of a set is the sum of the hashes of its elements, <code>H({a,b}) = H(a) + H(b)</code>. This idea is called ECMH (elliptic curve multiset hash, Maitin-Shepard, Tibouchi and Aranha, 2016). It lets you update the hash with one point addition when an element is added or removed, which a normal hash like SHA-256 cannot do.</p>
 
   <h2>3. Try it</h2>
   <div class="card">
@@ -116,8 +108,7 @@ G = (79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B 16F81798,
   <table id="selftest"><thead><tr><th>Check</th><th>Result</th></tr></thead><tbody></tbody></table>
 
   <h2>5. Statistical properties</h2>
-  <p>A good hash should behave like a random function. Four properties are tested. Each one compares what is observed with
-    the value expected from a perfectly random 256-bit output.</p>
+  <p>A good hash should behave like a random function. I run four tests, and each one compares what I observe with what a perfectly random 256-bit output would give.</p>
   <ul>
     <li><strong>Avalanche.</strong> Flipping one input bit should flip each output bit with probability 1/2. The number of flipped
       bits is then Binomial(256, 1/2): mean 128, standard deviation 8.</li>
@@ -128,11 +119,8 @@ G = (79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B 16F81798,
     <li><strong>Collisions.</strong> Truncating the output to k bits, the number of colliding pairs among N outputs should be close to
       N(N-1)/2 &middot; 2<sup>-k</sup> (birthday paradox).</li>
   </ul>
-  <p>As a control, the same tests are run on a deliberately bad hash (a polynomial hash
-    <code>&Sigma; b<sub>i</sub>&middot;257<sup>i</sup> mod 2<sup>256</sup></code>). If the tests are meaningful, the toy hash should pass
-    and the control should fail.</p>
-  <p>The two central computations of the experiment (<code>js/stats.js</code>). For the avalanche test, a random message is hashed, one random bit is flipped,
-    and the number of output bits that change (the Hamming distance) is recorded:</p>
+  <p>As a control I run the same tests on a deliberately bad hash (a polynomial hash <code>&Sigma; b<sub>i</sub>&middot;257<sup>i</sup> mod 2<sup>256</sup></code>). If the tests are meaningful, my hash should pass and the control should fail.</p>
+  <p>These are the two main computations (<code>js/stats.js</code>). For the avalanche test I hash a random message, flip one random bit of it and count how many output bits change (the Hamming distance):</p>
   <pre><code>const m = randomBytes(L);
 const h = hashFn(m);
 
@@ -141,7 +129,7 @@ const bit = Math.floor(Math.random() * L * 8);
 m2[bit &gt;&gt; 3] ^= 1 &lt;&lt; (bit &amp; 7);
 const d = hamming(h, hashFn(m2));
 hist[d]++; sum += d; sumSq += d * d;</code></pre>
-  <p>For byte uniformity, the observed count of each byte value is compared with the expected count, and the chi-square statistic is turned into a p-value:</p>
+  <p>For byte uniformity I compare the count of each byte value with the expected count and turn the chi-square statistic into a p-value:</p>
   <pre><code>const expectedBytes = (N * 32) / 256;
 const chi = byteCount.reduce((a, c) =&gt; a + (c - expectedBytes) ** 2 / expectedBytes, 0);
 const pChi = chi2PValue(chi, 255);</code></pre>
@@ -167,18 +155,17 @@ const pChi = chi2PValue(chi, 255);</code></pre>
   </div>
 
   <h2>6. Discussion</h2>
-  <p>The toy hash passes all four tests, and the control fails them in an obvious way: its output is biased
-    (the high bits never change for short messages), so the bit-balance and chi-square tests reject it immediately and
-    it collides far too often. This shows the tests have enough power to detect a bad function.
-    The tests are themselves random, so a good hash can occasionally show one borderline result (for example a chi-square p-value of 0.02):
-    the right reaction is to re-run with a larger N, not to conclude that the hash is defective.</p>
-  <p>It is important to be honest about <em>why</em> the toy hash passes. The x-coordinate is, up to a negligible reduction mod p, the output
-    of SHA-256, so its statistical quality is inherited from SHA-256. The elliptic curve does not improve it. What the curve adds is a
-    group structure: the algebraic property <code>H(a)+H(b)</code> above, and a security argument that reduces to
-    the hardness of discrete-log-type problems for the multiset version. Passing statistical tests is necessary but not sufficient:
+  <p>With the default settings my toy hash passes all four tests and the control fails all of them: its output is biased
+    (for short messages the high bits are always 0), so the bit-balance and chi-square tests reject it and it collides far too often.
+    So the tests are able to detect a bad function.</p>
+  <p>The tests are random too. A good hash can sometimes give one borderline result (for example a chi-square p-value of 0.02):
+    in that case I re-run with a larger N instead of concluding that the hash is broken.</p>
+  <p>Why does it pass? The x-coordinate is basically the output of SHA-256 (apart from a negligible reduction mod p), so the good statistics
+    come from SHA-256, not from the curve. What the curve adds is the group structure, i.e. the property <code>H(a)+H(b)</code> above, and a security
+    argument based on discrete-log-type problems for the multiset version. Passing statistical tests is necessary but not sufficient:
     they cannot prove collision or preimage resistance, they only fail to find defects.</p>
-  <p>Practical limits of this toy: it is slower than SHA-256 (a square root modulo p per attempt, about two attempts on average),
-    the number of attempts is variable (so it is not constant time), and the code is written for clarity, not for real use.</p>
+  <p>Limits: the toy hash is slower than SHA-256 (a square root mod p for each attempt, about two attempts on average), the number of attempts is not fixed,
+    so it is not constant time, and the code is written to be clear, not to be used for real.</p>
 
   <footer>Homework 1 &middot; code: <code>js/sha256.js</code>, <code>js/ecc.js</code>, <code>js/stats.js</code>, <code>js/hw1.js</code></footer>
 </main>
