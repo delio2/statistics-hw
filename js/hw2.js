@@ -55,15 +55,24 @@
       `<tr><td>P(interval &gt; 1 hour)</td><td>${(Math.exp(-3600 / mean) * 100).toFixed(3)}%</td><td>${((over1h / n) * 100).toFixed(3)}%</td></tr>`;
 
     // blocks per hour: cumulative arrival times, count in consecutive windows of 3600 s
-    const lam = 3600 / mean, maxK = Math.max(12, Math.ceil(lam * 2));
+    const lam = 3600 / mean;
+    const kMin = Math.max(0, Math.floor(lam - 4 * Math.sqrt(lam)));   // rows shown: mean +/- 4 sd
+    const kMax = Math.ceil(lam + 4 * Math.sqrt(lam));
     const hours = new Map();
     let t = 0;
     for (const dt of times) { t += dt; const h = Math.floor(t / 3600); hours.set(h, (hours.get(h) || 0) + 1); }
     const totalHours = Math.floor(t / 3600);             // only complete windows
-    const freq = new Array(maxK + 1).fill(0);
-    for (let h = 0; h < totalHours; h++) { const k = hours.get(h) || 0; if (k <= maxK) freq[k]++; }
-    $('m-pois').innerHTML = freq.map((f, k) =>
-      `<tr><td>${k}</td><td>${(poissonPmf(k, lam) * 100).toFixed(2)}%</td><td>${((f / totalHours) * 100).toFixed(2)}%</td></tr>`).join('');
+    if (totalHours < 1) {
+      $('m-pois').innerHTML = '<tr><td colspan="3">Simulated time is shorter than one hour: increase the number of blocks.</td></tr>';
+    } else {
+      const freq = new Array(kMax + 1).fill(0);
+      for (let h = 0; h < totalHours; h++) { const k = hours.get(h) || 0; if (k <= kMax) freq[k]++; }
+      let rowsHtml = '';
+      for (let k = kMin; k <= kMax; k++) {
+        rowsHtml += `<tr><td>${k}</td><td>${(poissonPmf(k, lam) * 100).toFixed(2)}%</td><td>${((freq[k] / totalHours) * 100).toFixed(2)}%</td></tr>`;
+      }
+      $('m-pois').innerHTML = rowsHtml;
+    }
 
     $('m-out').hidden = false;
     drawIntervals(times, mean);
