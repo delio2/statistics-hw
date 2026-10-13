@@ -1,131 +1,131 @@
-/* Page logic for Homework 2: block-time simulation, catch-up table, ECDSA nonce-reuse demo. */
+/* Page logic for Homework 2: wallet pipeline demo, BIP-39 entropy, hash comparison, statistics. */
 (function () {
   'use strict';
+  const { hexToBytes, toHex, utf8 } = ECC;
+  const { keccak256, sha3_256 } = Keccak;
   const $ = (id) => document.getElementById(id);
-  const css = () => getComputedStyle(document.documentElement);
 
-  // ---------- 2. mining as a Poisson process ----------
-  function poissonPmf(k, lam) {
-    let lf = 0;
-    for (let i = 2; i <= k; i++) lf += Math.log(i);
-    return Math.exp(-lam + k * Math.log(lam) - lf);
-  }
-
-  function drawIntervals(times, mean) {
-    const cv = $('m-chart'), ctx = cv.getContext('2d');
-    const W = cv.width, H = cv.height, pad = { l: 44, r: 12, t: 12, b: 42 };
-    const c = css(), col = (v) => c.getPropertyValue(v).trim();
-    ctx.clearRect(0, 0, W, H);
-    const xmax = mean * 5, bins = 50, bw = xmax / bins;
-    const counts = new Array(bins).fill(0);
-    for (const t of times) { const b = Math.floor(t / bw); if (b < bins) counts[b]++; }
-    const dens = counts.map((n) => n / times.length / bw);
-    const theory = (x) => Math.exp(-x / mean) / mean;
-    const ymax = Math.max(...dens, theory(0)) * 1.1;
-    const X = (x) => pad.l + (x / xmax) * (W - pad.l - pad.r);
-    const Y = (v) => H - pad.b - (v / ymax) * (H - pad.t - pad.b);
-
-    ctx.strokeStyle = col('--line'); ctx.fillStyle = col('--muted'); ctx.font = '12px system-ui';
-    ctx.beginPath(); ctx.moveTo(pad.l, H - pad.b); ctx.lineTo(W - pad.r, H - pad.b); ctx.stroke();
-    ctx.textAlign = 'center';
-    for (let i = 0; i <= 5; i++) ctx.fillText(Math.round((i * mean) / 60) + ' min', Math.min(X(i * mean), W - 22), H - pad.b + 16);
-    ctx.fillText('time between blocks', W / 2, H - 6);
-    ctx.textAlign = 'left';
-    ctx.fillText('density', 2, pad.t + 8);
-
-    ctx.globalAlpha = 0.6; ctx.fillStyle = col('--accent');
-    dens.forEach((v, i) => ctx.fillRect(X(i * bw) + 1, Y(v), X(bw) - X(0) - 1, Y(0) - Y(v)));
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = col('--fg'); ctx.lineWidth = 1.8; ctx.beginPath();
-    for (let i = 0; i <= 200; i++) { const x = (i / 200) * xmax; i ? ctx.lineTo(X(x), Y(theory(x))) : ctx.moveTo(X(x), Y(theory(x))); }
-    ctx.stroke(); ctx.lineWidth = 1;
-    ctx.fillStyle = col('--fg'); ctx.fillText('line: exponential density', W - 190, pad.t + 12);
-  }
-
-  $('m-run').addEventListener('click', () => {
-    const n = Math.min(500000, Math.max(500, +$('m-blocks').value | 0));
-    const mean = Math.max(1, +$('m-mean').value || 600);
-    const times = new Float64Array(n);
-    for (let i = 0; i < n; i++) times[i] = -mean * Math.log(1 - Math.random());   // 1-U is in (0,1]
-
-    let sum = 0, sumSq = 0, over1h = 0;
-    for (const t of times) { sum += t; sumSq += t * t; if (t > 3600) over1h++; }
-    const m = sum / n, sd = Math.sqrt(sumSq / n - m * m);
-    $('m-tab').innerHTML =
-      `<tr><td>Mean (s)</td><td>${mean}</td><td>${m.toFixed(1)}</td></tr>` +
-      `<tr><td>Standard deviation (s)</td><td>${mean}</td><td>${sd.toFixed(1)}</td></tr>` +
-      `<tr><td>P(interval &gt; 1 hour)</td><td>${(Math.exp(-3600 / mean) * 100).toFixed(3)}%</td><td>${((over1h / n) * 100).toFixed(3)}%</td></tr>`;
-
-    // blocks per hour: cumulative arrival times, count in consecutive windows of 3600 s
-    const lam = 3600 / mean;
-    const kMin = Math.max(0, Math.floor(lam - 4 * Math.sqrt(lam)));   // rows shown: mean +/- 4 sd
-    const kMax = Math.ceil(lam + 4 * Math.sqrt(lam));
-    const hours = new Map();
-    let t = 0;
-    for (const dt of times) { t += dt; const h = Math.floor(t / 3600); hours.set(h, (hours.get(h) || 0) + 1); }
-    const totalHours = Math.floor(t / 3600);             // only complete windows
-    if (totalHours < 1) {
-      $('m-pois').innerHTML = '<tr><td colspan="3">Simulated time is shorter than one hour: increase the number of blocks.</td></tr>';
-    } else {
-      const freq = new Array(kMax + 1).fill(0);
-      for (let h = 0; h < totalHours; h++) { const k = hours.get(h) || 0; if (k <= kMax) freq[k]++; }
-      let rowsHtml = '';
-      for (let k = kMin; k <= kMax; k++) {
-        rowsHtml += `<tr><td>${k}</td><td>${(poissonPmf(k, lam) * 100).toFixed(2)}%</td><td>${((freq[k] / totalHours) * 100).toFixed(2)}%</td></tr>`;
-      }
-      $('m-pois').innerHTML = rowsHtml;
-    }
-
-    $('m-out').hidden = false;
-    drawIntervals(times, mean);
-  });
-
-  // ---------- 3. attacker catch-up probability (Nakamoto, section 11) ----------
-  function catchUp(q, z) {
-    const p = 1 - q;
-    if (q >= p) return 1;
-    const lam = (z * q) / p;
-    let pois = Math.exp(-lam), sum = 0;
-    for (let k = 0; k <= z; k++) {
-      if (k > 0) pois *= lam / k;
-      sum += pois * (1 - Math.pow(q / p, z - k));
-    }
-    return 1 - sum;
-  }
-  const rows = [];
-  for (let z = 0; z <= 10; z++) {
-    rows.push(`<tr><td>${z}</td>` + [0.1, 0.3, 0.45].map((q) => `<td class="num">${catchUp(q, z).toFixed(7)}</td>`).join('') + '</tr>');
-  }
-  document.querySelector('#c-tab tbody').innerHTML = rows.join('');
-
-  // ---------- 4. ECDSA nonce reuse ----------
-  const { N, mul, inv, mod, bytesToBig, utf8 } = ECC;
-  const hex = (n) => n.toString(16).padStart(64, '0');
-  const rand = () => {
-    let k = 0n;
-    while (k === 0n) k = bytesToBig(crypto.getRandomValues(new Uint8Array(32))) % N;
-    return k;
+  // ---------- section 2: the pipeline ----------
+  const EXAMPLES = {
+    1: { mn: 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about', address: '0x9858EfFD232B4033E47d90003D41EC34EcaEda94' },
+    2: { mn: 'test test test test test test test test test test test junk', address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266' },
   };
+  const DEFAULT_PATH = "m/44'/60'/0'/0/0";
 
-  $('n-run').addEventListener('click', () => {
-    const d = rand(), k = rand();                                  // private key and (reused!) nonce
-    const z1 = bytesToBig(sha256(utf8('pay Alice 1 BTC'))) % N;
-    const z2 = bytesToBig(sha256(utf8('pay Bob 2 BTC'))) % N;
-    const r = mul(k).x % N;
-    const kinv = inv(k, N);
-    const s1 = mod(kinv * (z1 + r * d), N);
-    const s2 = mod(kinv * (z2 + r * d), N);
+  async function runPipeline() {
+    const table = $('w-out'), err = $('w-err');
+    err.textContent = '';
+    if (!(window.crypto && window.crypto.subtle)) {
+      err.textContent = 'This browser does not offer WebCrypto here (it needs https, localhost or a local file).';
+      return;
+    }
+    try {
+      const mnemonic = $('w-mn').value.trim().split(/\s+/).join(' ');
+      const passphrase = $('w-pass').value, path = $('w-path').value.trim();
+      const seed = await Wallet.mnemonicToSeed(mnemonic, passphrase);
+      const master = await Wallet.masterKey(seed);
+      const node = await Wallet.derivePath(seed, path);
+      const pub = Wallet.publicKey(node.key);
+      const hash = keccak256(pub.bytes);
+      const address = toHex(hash.slice(12));
+      const checksummed = Wallet.toChecksumAddress(address);
 
-    // attacker's side: only (z1, z2, r, s1, s2) are used
-    const kRec = mod((z1 - z2) * inv(s1 - s2, N), N);
-    const dRec = mod((s1 * kRec - z1) * inv(r, N), N);
+      const known = Object.values(EXAMPLES).find((e) => e.mn === mnemonic);
+      let reference = 'no reference value for this input';
+      if (known && passphrase === '' && path === DEFAULT_PATH) {
+        reference = checksummed === known.address
+          ? `<span class="pass">matches</span> the address that wallets show for this test phrase (${known.address})`
+          : '<span class="fail">does not match</span> the known address';
+      }
+      const row = (label, value) => `<tr><th>${label}</th><td class="mono-wrap">${value}</td></tr>`;
+      table.innerHTML =
+        row('1. Seed, 512 bits (BIP-39)', toHex(seed))
+        + row('2. Master private key (BIP-32)', toHex(master.key))
+        + row('Master chain code', toHex(master.chain))
+        + row(`3. Private key at ${path} (BIP-32, BIP-44)`, toHex(node.key))
+        + row('4. Public key x (secp256k1)', pub.x.toString(16).padStart(64, '0'))
+        + row('Public key y', pub.y.toString(16).padStart(64, '0'))
+        + row('5. Keccak-256 of x and y', toHex(hash))
+        + row('Address: last 20 bytes', '0x' + address)
+        + row('6. Checksummed address (EIP-55)', `<strong>${checksummed}</strong>`)
+        + row('Check', reference);
+      table.hidden = false;
+    } catch (e) {
+      table.hidden = true;
+      err.textContent = 'Error: ' + e.message;
+    }
+  }
+  $('w-run').addEventListener('click', runPipeline);
+  for (const n of [1, 2]) {
+    $('w-ex' + n).addEventListener('click', () => {
+      $('w-mn').value = EXAMPLES[n].mn; $('w-pass').value = ''; $('w-path').value = DEFAULT_PATH;
+      runPipeline();
+    });
+  }
 
-    $('n-r').textContent = hex(r);
-    $('n-s1').textContent = hex(s1);
-    $('n-s2').textContent = hex(s2);
-    $('n-k').textContent = hex(kRec);
-    $('n-d').textContent = hex(dRec);
-    $('n-ok').innerHTML = dRec === d ? '<span class="pass">yes - the private key is fully recovered</span>' : '<span class="fail">no</span>';
-    $('n-tab').hidden = false;
+  // ---------- section 3: BIP-39 entropy -> word indices ----------
+  function renderEntropy() {
+    const h = $('e-hex').value.trim().replace(/^0x/, '');
+    const out = $('e-out');
+    if (!/^[0-9a-fA-F]+$/.test(h) || ![32, 40, 48, 56, 64].includes(h.length)) {
+      out.textContent = 'Enter 32, 40, 48, 56 or 64 hexadecimal digits (16, 20, 24, 28 or 32 bytes).';
+      return;
+    }
+    const r = Wallet.entropyToIndices(hexToBytes(h));
+    const all = r.bits + r.checksum;
+    const rows = r.indices.map((idx, i) => `<tr><td>${i + 1}</td><td class="mono-wrap">${all.slice(11 * i, 11 * i + 11)}</td><td class="num">${idx}</td></tr>`).join('');
+    out.innerHTML = `<p>${r.bits.length} bits of entropy + ${r.checksum.length} checksum bits (the first ${r.checksum.length} bits of its SHA-256 hash, <code>${r.checksum}</code>) `
+      + `= ${all.length} bits = ${r.indices.length} groups of 11 bits = ${r.indices.length} words.</p>`
+      + `<table><thead><tr><th>word</th><th>11 bits</th><th class="num">index in the list (0-2047)</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  $('e-hex').addEventListener('input', renderEntropy);
+  renderEntropy();
+
+  // ---------- section 5: SHA-256, Keccak-256 and SHA3-256 of the same text ----------
+  function renderHashes() {
+    const m = utf8($('h-in').value);
+    const k = toHex(keccak256(m)), s3 = toHex(sha3_256(m));
+    $('h-out').innerHTML = `<tr><th>SHA-256 (SHA-2)</th><td class="mono-wrap">${toHex(sha256(m))}</td></tr>`
+      + `<tr><th>Keccak-256 (Ethereum)</th><td class="mono-wrap">${k}</td></tr>`
+      + `<tr><th>SHA3-256 (NIST)</th><td class="mono-wrap">${s3}</td></tr>`
+      + `<tr><th>Keccak-256 = SHA3-256?</th><td>${k === s3 ? '<span class="fail">yes</span>' : '<span class="pass">no, the digests differ</span>'}</td></tr>`;
+  }
+  $('h-in').addEventListener('input', renderHashes);
+  renderHashes();
+
+  // ---------- section 7: EIP-55 numbers ----------
+  $('eip-bits').textContent = (40 * 6 / 16).toFixed(0);
+  $('eip-pass').textContent = (Math.pow(13 / 16, 40) * 100).toFixed(4) + '%';
+
+  // ---------- section 7: statistical tests on the three hash functions ----------
+  const flag = (ok) => (ok ? '<span class="pass">pass</span>' : '<span class="fail">fail</span>');
+  function judge(r) {
+    const se = r.avalanche.expSd / Math.sqrt(r.N);
+    return {
+      aval: Math.abs(r.avalanche.mean - 128) < 4 * se && Math.abs(r.avalanche.sd / 8 - 1) < 0.15,
+      bits: r.bits.nAbove3 <= 4 && r.bits.maxAbsZ < 4.5,
+      chi: r.bytes.pChi > 0.001 && r.bytes.pChi < 0.999,
+      coll: Math.abs(r.coll.z) < 4,
+    };
+  }
+
+  $('run-hash').addEventListener('click', async () => {
+    const N = Math.min(5000, Math.max(200, Number($('n-hash').value) | 0));
+    const btn = $('run-hash'), prog = $('prog-hash');
+    btn.disabled = true; prog.hidden = false; prog.value = 0;
+    const fns = [sha256, keccak256, sha3_256];
+    const results = [];
+    for (let i = 0; i < fns.length; i++) {
+      results.push(await Stats.runExperiment(fns[i], { samples: N, msgLen: 64, truncBits: 16, onProgress: (p) => { prog.value = (i + p) / fns.length; } }));
+    }
+    prog.hidden = true; btn.disabled = false;
+    const J = results.map(judge);
+    const cells = (f, key) => results.map((r, i) => `<td>${f(r)} ${flag(J[i][key])}</td>`).join('');
+    $('hash-table').querySelector('tbody').innerHTML =
+      `<tr><td>Avalanche: mean flipped bits (sd)</td><td>128 (8)</td>${cells((r) => `${r.avalanche.mean.toFixed(2)} (${r.avalanche.sd.toFixed(2)})`, 'aval')}</tr>`
+      + `<tr><td>Bit balance: bits with |z| &gt; 3 / max |z|</td><td>≈ 0.7 / ≈ 2.9</td>${cells((r) => `${r.bits.nAbove3} / ${r.bits.maxAbsZ.toFixed(2)}`, 'bits')}</tr>`
+      + `<tr><td>Byte uniformity: chi-square (255 df), p-value</td><td>≈ 255, p not extreme</td>${cells((r) => `${r.bytes.chi.toFixed(1)}, p = ${r.bytes.pChi.toFixed(3)}`, 'chi')}</tr>`
+      + `<tr><td>Collisions on 16 bits: observed / expected</td><td>close</td>${cells((r) => `${r.coll.observed} / ${r.coll.expected.toFixed(1)}`, 'coll')}</tr>`;
+    $('hash-table').hidden = false;
   });
 })();

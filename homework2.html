@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Homework 2 - Cryptography and statistics in blockchains</title>
+  <title>Homework 2 - From wallet seed to Ethereum address</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -13,147 +13,245 @@
   <a href="homework2.html">Homework 2</a>
 </nav>
 <main>
-  <h1>Homework 2 - Cryptography and statistics in the most famous blockchains</h1>
-  <p class="sub">Research: modern applications of cryptography and statistics in Bitcoin and Ethereum, with two small simulations.</p>
+  <h1>Homework 2 - From wallet seed to Ethereum address</h1>
+  <p class="sub">Hashing, key derivation and cryptographic primitives in the Ethereum wallet pipeline, and their statistical properties.</p>
 
-  <h2>1. Overview</h2>
-  <p>A blockchain is a ledger copied on many computers that do not trust each other. Cryptography gives the building blocks (hashes, signatures). Statistics and probability describe how the system behaves and how it can be attacked, because mining, randomness and attacker power are random quantities.</p>
+  <p>A wallet does not store a list of addresses. It keeps one secret and derives everything else from it. In this homework I follow the whole path from the
+    mnemonic phrase to a checksummed Ethereum address, explain the role of each standard and primitive, put them in their historical context, and look at their statistical properties.
+    Instead of using a wallet application, I implemented the pipeline in JavaScript and checked it against public test vectors.</p>
+
+  <h2>1. The pipeline at a glance</h2>
   <table>
-    <thead><tr><th>Building block</th><th>Bitcoin</th><th>Ethereum</th><th>Statistical side</th></tr></thead>
+    <thead><tr><th>Step</th><th>Input</th><th>Operation</th><th>Output</th></tr></thead>
     <tbody>
-      <tr><td>Hash function</td><td>SHA-256 (double) for proof of work, block ids, Merkle tree</td><td>Keccak-256 for addresses, state and transaction hashes</td><td>Output must look uniform; mining is a Bernoulli process</td></tr>
-      <tr><td>Signature</td><td>ECDSA on secp256k1; Schnorr (BIP 340) on the same curve since Taproot (2021)</td><td>ECDSA on secp256k1 for accounts; BLS signatures on BLS12-381 for validators</td><td>The per-signature nonce must be uniform and secret</td></tr>
-      <tr><td>Consensus</td><td>Proof of work: longest (most-work) chain</td><td>Proof of stake since the Merge (September 2022): validators chosen pseudo-randomly</td><td>Poisson arrivals, double-spend probability, selfish mining</td></tr>
-      <tr><td>Address</td><td>RIPEMD-160(SHA-256(public key)) (and variants)</td><td>last 20 bytes of Keccak-256(public key)</td><td>Collisions negligible; low-entropy keys are not</td></tr>
+      <tr><td>1</td><td>random entropy, 128 to 256 bits</td><td>BIP-39: add a SHA-256 checksum, cut in groups of 11 bits, one word per group</td><td>mnemonic phrase, 12 to 24 words</td></tr>
+      <tr><td>2</td><td>mnemonic (and optional passphrase)</td><td>BIP-39: PBKDF2-HMAC-SHA512, 2048 iterations</td><td>seed, 512 bits</td></tr>
+      <tr><td>3</td><td>seed and a derivation path</td><td>BIP-32: HMAC-SHA512 along the BIP-44 path</td><td>private key, 256 bits</td></tr>
+      <tr><td>4</td><td>private key k</td><td>secp256k1: Q = kG</td><td>public key, 512 bits (x and y)</td></tr>
+      <tr><td>5</td><td>public key</td><td>Keccak-256, keep the last 20 bytes</td><td>address, 160 bits</td></tr>
+      <tr><td>6</td><td>address</td><td>EIP-55: capital letters chosen with Keccak-256</td><td>checksummed address</td></tr>
     </tbody>
   </table>
-  <p>The curve of Homework 1 is the one both systems use to sign transactions.</p>
+  <p>Steps 1 to 3 manage the secret (generation and derivation of keys), step 4 is public-key cryptography, and steps 5 and 6 produce the public identifier.</p>
 
-  <h2>2. Mining as a Poisson process</h2>
-  <p>To mine a Bitcoin block a miner varies a nonce until <code>SHA-256(SHA-256(header))</code>, read as a number, is below a target <em>T</em>.
-    If the hash behaves like a uniform random value, each attempt succeeds with the tiny probability
-    <em>p = T / 2<sup>256</sup></em>, independently of all the others. A long sequence of independent, rare Bernoulli trials gives:</p>
-  <ul>
-    <li>the number of blocks found in a time window is approximately <strong>Poisson</strong>, with rate &lambda; = (hash rate) &middot; p;</li>
-    <li>the time between blocks is <strong>exponential</strong> with mean 1/&lambda;, and it is <strong>memoryless</strong>: having waited 20 minutes does not make the next block closer.</li>
-  </ul>
-  <p>The protocol aims at 10 minutes per block on average and adjusts the difficulty every 2016 blocks (about two weeks). A block needs on average <em>D &middot; 2<sup>32</sup></em> hashes, where D is the difficulty, so the network hash rate is about <em>D &middot; 2<sup>32</sup> / 600</em> hashes per second. This is an estimate from a finite sample: the sum of 2016 exponential times has relative standard deviation 1/&radic;2016 &asymp; 2.2%, which is the statistical error of each difficulty adjustment.</p>
-
+  <h2>2. The pipeline step by step (live)</h2>
   <div class="card">
-    <strong>Simulation: block arrival times</strong>
+    <p class="warn"><strong>Use test phrases only.</strong> Never type a real seed phrase into a web page, this one included. The two example phrases are public test vectors:
+      any funds sent to their addresses would be stolen immediately.</p>
+    <label for="w-mn">Mnemonic phrase</label>
+    <textarea id="w-mn" rows="3" spellcheck="false" autocomplete="off">abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about</textarea>
     <div class="row">
-      <div><label for="m-blocks">Blocks to simulate</label><input type="number" id="m-blocks" value="20000" min="500" max="500000"></div>
-      <div><label for="m-mean">Mean block time (s)</label><input type="number" id="m-mean" value="600" min="1"></div>
+      <div><label for="w-pass">Passphrase (optional)</label><input type="text" id="w-pass" autocomplete="off"></div>
+      <div><label for="w-path">Derivation path (BIP-44)</label><input type="text" id="w-path" value="m/44'/60'/0'/0/0" autocomplete="off"></div>
     </div>
-    <button id="m-run">Simulate</button>
-    <div id="m-out" hidden>
-      <canvas id="m-chart" width="860" height="300"></canvas>
-      <table>
-        <thead><tr><th>Quantity</th><th>Theory (exponential)</th><th>Simulated</th></tr></thead>
-        <tbody id="m-tab"></tbody>
-      </table>
-      <p><strong>Blocks found per hour</strong> compared with the Poisson distribution (mean = 3600 / mean block time):</p>
-      <table>
-        <thead><tr><th>Blocks in the hour</th><th>Poisson probability</th><th>Observed frequency</th></tr></thead>
-        <tbody id="m-pois"></tbody>
-      </table>
+    <div class="btns">
+      <button id="w-run">Run the pipeline</button>
+      <button id="w-ex1" class="secondary">Example 1</button>
+      <button id="w-ex2" class="secondary">Example 2</button>
     </div>
+    <p id="w-err" class="fail"></p>
+    <table id="w-out" hidden></table>
   </div>
-  <p>The simulation uses inverse-transform sampling: if U is uniform on (0,1), then <code>-mean &middot; ln(U)</code> is exponential with that mean. The standard deviation of an exponential equals its mean, so block times are very irregular. About 1 block in 400 takes more than an hour (<code>e<sup>-6</sup></code>), and that is normal for the protocol.</p>
-  <p>The sampling line of the simulation (<code>js/hw2.js</code>); <code>1 - Math.random()</code> avoids taking the logarithm of 0:</p>
-  <pre><code>for (let i = 0; i &lt; n; i++) times[i] = -mean * Math.log(1 - Math.random());   // 1-U is in (0,1]</code></pre>
+  <p>The two examples are the standard BIP-39 test phrase ("abandon ... about") and the default phrase of the Hardhat development tool ("test ... junk"). For both, the address obtained here
+    is the one that wallets show for the first account. I also checked the BIP-32 code against the first test vector of the BIP-32 specification.</p>
 
-  <h2>3. How many confirmations? The attacker catch-up probability</h2>
-  <p>An attacker with a fraction <em>q</em> of the hash power secretly mines a competing chain, while honest miners (fraction <em>p = 1 - q</em>) extend the real one.
-    After a merchant waits for <em>z</em> confirmations, what is the chance the attacker ever catches up? Nakamoto's white paper (section 11) models the
-    attacker's progress as a Poisson variable with mean &lambda; = z&middot;q/p, and then uses the gambler's-ruin result
-    (catch-up from a deficit of k blocks with probability (q/p)<sup>k</sup> if q &lt; p):</p>
-  <pre>P(attacker catches up) = 1 - &Sigma;<sub>k=0..z</sub> [ &lambda;<sup>k</sup> e<sup>-&lambda;</sup> / k! ] &middot; ( 1 - (q/p)<sup>z-k</sup> )</pre>
-  <p>Implementation (<code>js/hw2.js</code>). The Poisson term is built iteratively, starting from <code>e<sup>-&lambda;</sup></code> and multiplying by <code>&lambda;/k</code> at each step, so no factorial is needed:</p>
-  <pre><code>function catchUp(q, z) {
-  const p = 1 - q;
-  if (q &gt;= p) return 1;
-  const lam = (z * q) / p;
-  let pois = Math.exp(-lam), sum = 0;
-  for (let k = 0; k &lt;= z; k++) {
-    if (k &gt; 0) pois *= lam / k;
-    sum += pois * (1 - Math.pow(q / p, z - k));
-  }
-  return 1 - sum;
+  <h2>3. The six building blocks</h2>
+
+  <h3>BIP-39: mnemonic sentence and seed</h3>
+  <p><strong>Purpose:</strong> a backup of the secret that a human can write down. A random entropy of 128 to 256 bits (a multiple of 32) receives a checksum, the first ENT/32 bits of its SHA-256 hash,
+    and the result is cut in groups of 11 bits. Each group is the index of a word in a fixed list of 2048 words, so 128 bits give 12 words and 256 bits give 24. The checksum lets a wallet notice a mistyped phrase.</p>
+  <div class="card">
+    <label for="e-hex">Entropy in hexadecimal (16 to 32 bytes)</label>
+    <input type="text" id="e-hex" value="00000000000000000000000000000000" autocomplete="off">
+    <div id="e-out"></div>
+  </div>
+  <p>With the all-zero entropy the indices are eleven 0 and one 3, which in the official English list are the words "abandon" (index 0) and "about" (index 3): this is the test phrase used above.
+    The mnemonic is then turned into a seed. The seed does not need the word list, because it is computed from the text of the phrase (<code>js/wallet.js</code>):</p>
+  <pre><code>// seed = PBKDF2-HMAC-SHA512(password = mnemonic, salt = "mnemonic" + passphrase, 2048 iterations, 64 bytes)
+async function mnemonicToSeed(mnemonic, passphrase = '') {
+  const key = await subtle.importKey('raw', utf8(mnemonic.normalize('NFKD')), 'PBKDF2', false, ['deriveBits']);
+  const salt = utf8('mnemonic' + passphrase.normalize('NFKD'));
+  return new Uint8Array(await subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-512', salt, iterations: 2048 }, key, 512));
 }</code></pre>
+  <p>The salt is the string "mnemonic" followed by an optional passphrase, so the same phrase with another passphrase gives a completely different wallet. The 2048 iterations make every guess more expensive for an attacker.</p>
+
+  <h3>BIP-32: hierarchical deterministic (HD) key derivation</h3>
+  <p><strong>Purpose:</strong> one seed, a whole tree of keys. The master private key and a chain code are the two halves of HMAC-SHA512 with key "Bitcoin seed" applied to the seed.
+    A child key is computed from the parent key, the parent chain code and an index: <code>I = HMAC-SHA512(chain code, data)</code>, the child key is the left half of I plus the parent key (mod n),
+    and the right half of I is the new chain code. Indexes from 2<sup>31</sup> on are hardened (the data contains the parent private key); the others use the parent public key.
+    Nothing has to be stored except the seed, and the same seed always rebuilds the same tree (<code>js/wallet.js</code>):</p>
+  <pre><code>// child key derivation (private parent -&gt; private child)
+async function childKey(parent, index) {
+  const k = bytesToBig(parent.key);
+  const data = index &gt;= HARDENED
+    ? concat(Uint8Array.of(0), parent.key, ser32(index))                        // hardened: uses the private key
+    : concat(E.hexToBytes(E.compress(C.mul(k))), ser32(index));                  // normal: uses the public key
+  const I = await hmacSha512(parent.chain, data);
+  const il = bytesToBig(I.slice(0, 32));
+  const child = (il + k) % C.n;
+  if (il &gt;= C.n || child === 0n) throw new Error('invalid key (probability &lt; 2^-127): use the next index');
+  return { key: bigToBytes(child), chain: I.slice(32) };
+}</code></pre>
+
+  <h3>BIP-44: standard derivation paths</h3>
+  <p><strong>Purpose:</strong> a convention so that different wallets find the same accounts. The path is <code>m / purpose' / coin_type' / account' / change / address_index</code>, where the apostrophe means hardened.
+    The purpose is 44, the coin type is 60 for Ethereum (the numbers are listed in the SLIP-44 registry), then the account number, 0 for external addresses, and the index of the address.
+    So <code>m/44'/60'/0'/0/0</code> is the first address of the first Ethereum account, the one many wallets, such as MetaMask, show first.</p>
+
+  <h3>secp256k1: public-key cryptography</h3>
+  <p><strong>Purpose:</strong> to turn a private key into a public key that anyone can use to check signatures. The private key is a 256-bit integer k between 1 and n - 1, and the public key is the point Q = kG
+    of the curve y&sup2; = x&sup3; + 7, the same arithmetic as in Homework 1 but over a 256-bit prime field. Going back from Q to k is the elliptic curve discrete logarithm problem, which costs about 2<sup>128</sup> operations.
+    The curve is defined in SEC 2 and Bitcoin has used it since 2009; Ethereum signs transactions with ECDSA on it. Ethereum uses the 64 bytes x and y of the public key (<code>js/wallet.js</code>):</p>
+  <pre><code>function publicKey(privateKey) {                 // the 64 bytes x || y (Ethereum drops the 0x04 prefix)
+  const Q = C.mul(bytesToBig(privateKey));
+  return { x: Q.x, y: Q.y, bytes: concat(bigToBytes(Q.x), bigToBytes(Q.y)) };
+}
+
+const addressBytes = (pubBytes) =&gt; K.keccak256(pubBytes).slice(12);          // last 20 bytes of Keccak-256</code></pre>
+
+  <h3>Keccak-256: hashing</h3>
+  <p><strong>Purpose:</strong> to compress the 64-byte public key into a short, fixed-size identifier. Ethereum computes Keccak-256 of x and y and keeps the last 20 bytes (160 bits): that is the address
+    (the last line of the code above). Keccak is a sponge: the message is absorbed, block by block, into a 1600-bit state through the permutation Keccak-f (24 rounds); with a rate of 1088 bits and a capacity of 512 bits,
+    256 bits are then squeezed out. It is a hash function: no key, a fixed-size output, and it is easy to compute but hard to invert.</p>
+
+  <h3>EIP-55: mixed-case checksum</h3>
+  <p><strong>Purpose:</strong> to detect typing errors in an address without changing its format. Take the lower-case hexadecimal address (without 0x), compute the Keccak-256 hash of that text, and write each letter a to f
+    in capitals if the corresponding hexadecimal digit of the hash is 8 or more. The pattern of capitals is the checksum; software that ignores the case still reads the address (<code>js/wallet.js</code>):</p>
+  <pre><code>// EIP-55: a hex letter is written in upper case when the matching nibble of Keccak-256(lower-case address) is &gt;= 8
+function toChecksumAddress(addressHex) {
+  const lower = addressHex.toLowerCase().replace(/^0x/, '');
+  const hash = toHex(K.keccak256(utf8(lower)));
+  let out = '0x';
+  for (let i = 0; i &lt; lower.length; i++) {
+    out += /[a-f]/.test(lower[i]) &amp;&amp; parseInt(hash[i], 16) &gt;= 8 ? lower[i].toUpperCase() : lower[i];
+  }
+  return out;
+}</code></pre>
+
+  <h2>4. Key generation, derivation, public-key cryptography, hashing, checksums and encoding</h2>
+  <p>These five ideas are easy to confuse. In the pipeline they are clearly separated:</p>
+  <table>
+    <thead><tr><th>Concept</th><th>What it is</th><th>In the pipeline</th></tr></thead>
+    <tbody>
+      <tr><td>Key generation</td><td>Creating new secret randomness. It needs a good random source.</td><td>Choosing the random entropy of the mnemonic. It is the only random step.</td></tr>
+      <tr><td>Key derivation</td><td>Computing keys deterministically from a secret that already exists: the same input always gives the same keys.</td><td>PBKDF2 (mnemonic to seed), HMAC-SHA512 in BIP-32 (the key tree), the BIP-44 path (which key of the tree).</td></tr>
+      <tr><td>Public-key cryptography</td><td>A pair of keys linked by a one-way operation: the public key can be shared, and only the private key can sign.</td><td>secp256k1: Q = kG.</td></tr>
+      <tr><td>Hashing</td><td>A keyless function that maps any input to a fixed-size digest and cannot be inverted.</td><td>Keccak-256 (address), SHA-256 (BIP-39 checksum), SHA-512 inside PBKDF2 and HMAC.</td></tr>
+      <tr><td>Checksum</td><td>Redundancy that detects accidental errors. It gives no secrecy and no protection against an attacker.</td><td>The checksum bits of the mnemonic and the capital letters of EIP-55.</td></tr>
+      <tr><td>Encoding</td><td>A reversible way to write data. It has nothing to do with security.</td><td>Words (11 bits per word), hexadecimal, the 0x prefix, upper and lower case.</td></tr>
+    </tbody>
+  </table>
+  <p>A hash is not encryption, an encoding is not secret, and a checksum is not a signature.</p>
+
+  <h2>5. Historical context</h2>
+  <table>
+    <thead><tr><th>Year</th><th>Technology</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>1977</td><td>RSA</td><td>The first widely used public-key cryptosystem (published in 1978). The pipeline uses elliptic curves instead, but the idea of a key pair is the same.</td></tr>
+      <tr><td>2001</td><td>SHA-2 (SHA-256, SHA-512, ...)</td><td>NIST standard (FIPS 180-2, final in 2002). SHA-256 gives the BIP-39 checksum, SHA-512 is inside PBKDF2 and HMAC.</td></tr>
+      <tr><td>2012</td><td>BIP-32</td><td>Hierarchical deterministic wallets.</td></tr>
+      <tr><td>2013</td><td>BIP-39</td><td>Mnemonic code for deterministic wallets.</td></tr>
+      <tr><td>2014</td><td>BIP-44</td><td>Multi-account hierarchy: standard paths.</td></tr>
+      <tr><td>2015</td><td>SHA-3 (FIPS 202)</td><td>Standardised by NIST, based on Keccak, which had won the SHA-3 competition in 2012. Ethereum went live in 2015 using Keccak.</td></tr>
+      <tr><td>2016</td><td>EIP-55</td><td>Mixed-case checksum for Ethereum addresses.</td></tr>
+    </tbody>
+  </table>
+  <p>The order is: public-key cryptography first, then the hash standards, then the wallet conventions that join them. The wallet standards (2012 to 2014) came from Bitcoin and were reused by Ethereum.</p>
+
+  <h3>SHA-2 / SHA-512 and Keccak / SHA-3</h3>
+  <table>
+    <thead><tr><th></th><th>SHA-2 (SHA-256, SHA-512)</th><th>Keccak / SHA-3</th></tr></thead>
+    <tbody>
+      <tr><td>Standard</td><td>FIPS 180-2 (2001-2002), now FIPS 180-4</td><td>FIPS 202 (2015). Keccak won the NIST competition (2007-2012)</td></tr>
+      <tr><td>Construction</td><td>Merkle-Damgard: a compression function applied block after block</td><td>Sponge: absorb into a 1600-bit state, apply a permutation, squeeze</td></tr>
+      <tr><td>Size</td><td>SHA-256: 512-bit blocks, 32-bit words, 64 rounds. SHA-512: 1024-bit blocks, 64-bit words, 80 rounds</td><td>Rate 1088 bits for a 256-bit output, 24 rounds of Keccak-f[1600]</td></tr>
+      <tr><td>Length extension</td><td>Possible for SHA-256 and SHA-512 (not for truncated versions such as SHA-384)</td><td>Not possible</td></tr>
+      <tr><td>In the wallet</td><td>SHA-256: BIP-39 checksum. SHA-512: PBKDF2 and BIP-32</td><td>Keccak-256: address and EIP-55</td></tr>
+    </tbody>
+  </table>
+  <p>They are related historically and both are cryptographic hash functions. SHA-3 was chosen with a completely different design from SHA-2, so that a weakness found in one family would not affect the other.
+    Ethereum was built on the Keccak submission before the standard was final. Then NIST added domain-separation bits to the padding in FIPS 202 (the suffix 0x06 for SHA3-256 instead of 0x01), so
+    <strong>Ethereum's Keccak-256 is not the standardised SHA3-256</strong>: the permutation is the same, the padding is different, and the digests are different. In my code the only difference is one number (<code>js/keccak.js</code>):</p>
+  <pre><code>const padded = new Uint8Array(Math.ceil((msg.length + 1) / rate) * rate);
+padded.set(msg);
+padded[msg.length] ^= suffix;                          // domain-separation / padding byte
+padded[padded.length - 1] ^= 0x80;                     // final bit of the pad10*1 rule
+
+keccak256: (msg) =&gt; sponge(msg, 136, 0x01, 32),
+sha3_256: (msg) =&gt; sponge(msg, 136, 0x06, 32),</code></pre>
   <div class="card">
-    <table id="c-tab"><thead><tr><th>Confirmations z</th><th class="num">q = 10%</th><th class="num">q = 30%</th><th class="num">q = 45%</th></tr></thead><tbody></tbody></table>
+    <label for="h-in">Text to hash</label>
+    <input type="text" id="h-in" value="abc" autocomplete="off">
+    <table id="h-out"></table>
   </div>
-  <p>The probability falls exponentially with z when q &lt; 1/2, which is why 6 confirmations (about an hour) became the common convention
-    for large payments; the table reproduces the values published by Nakamoto for q = 0.1 and q = 0.3. If q &ge; 1/2 the attacker always wins eventually.
-    Statistics also shows that "majority is not enough": Eyal and Sirer (2014) proved that a miner who withholds blocks strategically (<em>selfish mining</em>) can earn more than a fair share
-    with less than half of the hash power. The threshold is 1/3 if the attacker never wins a tie, 1/4 if it wins half of the ties, and any positive share if it always wins them.</p>
 
-  <h2>4. When randomness fails: ECDSA nonce reuse</h2>
-  <p>An ECDSA signature of a message hash <em>z</em> with private key <em>d</em> uses a fresh random nonce <em>k</em>:</p>
-  <pre>r = x(k&middot;G) mod n        s = k<sup>-1</sup> (z + r&middot;d) mod n</pre>
-  <p>Security needs <em>k</em> to be uniform on [1, n-1] and used once. If the same <em>k</em> signs two different messages, <em>r</em> is the same, and then
-    <em>k = (z<sub>1</sub> - z<sub>2</sub>) / (s<sub>1</sub> - s<sub>2</sub>)</em> and <em>d = (s<sub>1</sub>&middot;k - z<sub>1</sub>) / r</em>:
-    two public signatures give away the private key. This really happened: Sony's PS3 signing key was recovered in 2010 because the console used a constant nonce,
-    and in 2013 a flaw in Android's random generator produced repeated <em>r</em> values in Bitcoin transactions and allowed theft of funds.
-    Even a <em>biased</em> nonce is dangerous: knowing only a few bits of each nonce over many signatures lets an attacker solve a lattice problem and recover the key
-    (Howgrave-Graham and Smart, 2001; Breitner and Heninger, 2019, applied it to real Bitcoin and Ethereum signatures). So the quality of the random numbers is a security problem, not just a detail of statistics.</p>
-  <p>The demonstration below signs two messages with the same nonce and then recovers the key using only public values (<code>js/hw2.js</code>):</p>
-  <pre><code>const r = mul(k).x % N;
-const kinv = inv(k, N);
-const s1 = mod(kinv * (z1 + r * d), N);
-const s2 = mod(kinv * (z2 + r * d), N);
+  <h2>6. Why several different primitives?</h2>
+  <p>Each step has its own job and its own security goal, so no single algorithm could do everything:</p>
+  <ul>
+    <li><strong>BIP-39 / BIP-32 / BIP-44: key management and derivation.</strong> They make one short secret enough to rebuild every key, they give a standard way to back it up (words) and to organise accounts (paths),
+      so that different wallets agree.</li>
+    <li><strong>secp256k1: the relation between private and public key, and signatures.</strong> Only this step lets someone prove ownership without revealing the secret and lets everyone check it.
+      A hash function has no such key pair.</li>
+    <li><strong>Keccak-256: hashing.</strong> It shortens the public key to a fixed 20-byte identifier. A curve cannot compress arbitrary data in that way.</li>
+    <li><strong>EIP-55: checksum and error detection.</strong> It protects against typing mistakes, which none of the other steps does, and it does so without changing the address format.</li>
+  </ul>
+  <p>Going down the pipeline is easy and going up is hard, so the public values (public key and address) can be shown to anyone, while the seed and the private key must be kept secret.
+    Separating the steps also lets each one be reused or replaced on its own: for example, BIP-39 and BIP-32 are shared by Bitcoin and Ethereum wallets.</p>
 
-// attacker's side: only (z1, z2, r, s1, s2) are used
-const kRec = mod((z1 - z2) * inv(s1 - s2, N), N);
-const dRec = mod((s1 * kRec - z1) * inv(r, N), N);</code></pre>
-
+  <h2>7. Statistical properties</h2>
+  <p>Each step needs its output to look uniformly random and unrelated to its input; otherwise a secret could be guessed or two identifiers could collide.</p>
+  <ul>
+    <li><strong>Entropy of the phrase.</strong> A 12-word phrase carries 128 bits (132 encoded bits minus 4 checksum bits), a 24-word phrase 256 bits. Searching 2<sup>128</sup> possibilities is out of reach, but only if the entropy comes
+      from a good random source: a phrase chosen by hand has far fewer bits.</li>
+    <li><strong>Seed.</strong> The PBKDF2-HMAC-SHA512 output should be indistinguishable from 512 random bits. The 2048 iterations multiply by 2048 (about 11 bits) the work needed to test one guess of the passphrase,
+      but they add no entropy.</li>
+    <li><strong>BIP-32.</strong> Each HMAC-SHA512 gives 512 pseudo-random bits. A child key would be invalid only if the left half were n or more, or the key were 0, which has probability below 2<sup>-127</sup>: it never happens in practice.</li>
+    <li><strong>Public key.</strong> The x-coordinate of kG looks uniform, as the secp256k1 tests of Homework 1 show.</li>
+    <li><strong>Address.</strong> Only 160 bits are kept. Finding two keys with the same address costs about 2<sup>80</sup> operations (birthday bound); finding a key for a given address costs about 2<sup>160</sup>,
+      more than the 2<sup>128</sup> needed to break the curve itself.</li>
+    <li><strong>EIP-55.</strong> A 40-digit random address contains on average 40 &middot; 6/16 = <span id="eip-bits">15</span> letters, and each letter carries one check bit.
+      A random typo passes the check with probability (13/16)<sup>40</sup> = <span id="eip-pass">0.0247%</span> on average, about 1 in 4000, while an all-lower-case address has no check at all.
+      An address with no letters has no checksum either.</li>
+  </ul>
+  <p>The hash functions can also be tested statistically. I feed the three functions of this homework with random 64-byte inputs (the size of a public key) and run the same tests as in Homework 1:
+    avalanche (flipping one input bit should flip each output bit with probability 1/2), bit balance, uniformity of the bytes (chi-square) and collisions on 16 truncated bits.</p>
   <div class="card">
-    <strong>Demonstration with the curve of Homework 1</strong>
-    <p class="sub">Generates a random private key, signs two messages with the same nonce, and recovers the key from the public values only.</p>
-    <button id="n-run">Run the attack</button>
-    <table id="n-tab" hidden>
-      <tr><th>r</th><td class="mono-wrap" id="n-r"></td></tr>
-      <tr><th>s<sub>1</sub></th><td class="mono-wrap" id="n-s1"></td></tr>
-      <tr><th>s<sub>2</sub></th><td class="mono-wrap" id="n-s2"></td></tr>
-      <tr><th>Recovered nonce k</th><td class="mono-wrap" id="n-k"></td></tr>
-      <tr><th>Recovered private key d</th><td class="mono-wrap" id="n-d"></td></tr>
-      <tr><th>Equal to the real key?</th><td id="n-ok"></td></tr>
+    <div class="row">
+      <div><label for="n-hash">Number of random inputs</label><input type="number" id="n-hash" value="2000" min="200" max="5000"></div>
+    </div>
+    <button id="run-hash">Run the tests</button>
+    <progress id="prog-hash" value="0" max="1" hidden></progress>
+    <table id="hash-table" hidden>
+      <thead><tr><th>Test</th><th>Ideal</th><th>SHA-256</th><th>Keccak-256</th><th>SHA3-256</th></tr></thead>
+      <tbody></tbody>
     </table>
   </div>
-
-  <h2>5. Statistics as an analysis tool</h2>
-  <ul>
-    <li><strong>De-anonymisation.</strong> Addresses are pseudonyms. Heuristics such as "all inputs of one transaction belong to the same owner" let analysts cluster addresses and
-      link them to exchanges or services (Meiklejohn et al., 2013). Privacy tools try to defeat these inferences, and the arms race is statistical.</li>
-    <li><strong>Anomaly and fraud detection.</strong> Benford's law says the leading digit d of many natural datasets appears with probability log<sub>10</sub>(1 + 1/d)
-      (30.1% for 1, 4.6% for 9). Amounts that deviate strongly can flag wash trading or fabricated data, though a deviation alone is never proof.</li>
-    <li><strong>Proof of stake.</strong> In Ethereum the block proposer of each 12-second slot is chosen pseudo-randomly (the probability depends on the stake of the validator)
-      and the validators are shuffled into committees, using a shared source of randomness (RANDAO). Whether this randomness is fair and hard to manipulate is again a statistical question.</li>
-  </ul>
-
-  <h2>6. Conclusion</h2>
-  <p>In this homework I looked at how cryptography and statistics work together in Bitcoin and Ethereum. Mining is a Poisson process, so block times are random
-    and a confirmation is only a probabilistic guarantee. Signatures are as strong as the randomness of their nonces, and many real attacks hit the random numbers,
-    not the mathematics of the algorithms. The toy hash of Homework 1 follows the same idea on a small scale: the algebra gives the structure and the statistical tests check
-    that the output behaves as the security argument assumes.</p>
+  <p>The three functions pass in the same way. Keccak-256 and SHA3-256 are statistically indistinguishable, as expected for two functions that differ only in one padding byte, and SHA-256, from the other family,
+    behaves in the same way too. This is what the tests can say: that the common requirement holds. They cannot tell the families apart, and they cannot prove collision or preimage resistance.</p>
 
   <h2>References</h2>
   <ul>
-    <li>S. Nakamoto, <em>Bitcoin: A Peer-to-Peer Electronic Cash System</em>, 2008.</li>
+    <li>P. Wuille, <em>BIP-32: Hierarchical Deterministic Wallets</em>, 2012.</li>
+    <li>M. Palatinus, P. Rusnak, A. Voisine, S. Bowe, <em>BIP-39: Mnemonic code for generating deterministic keys</em>, 2013.</li>
+    <li>M. Palatinus, P. Rusnak, <em>BIP-44: Multi-Account Hierarchy for Deterministic Wallets</em>, 2014.</li>
+    <li>SatoshiLabs, <em>SLIP-44: Registered coin types for BIP-44</em>.</li>
+    <li>V. Buterin, A. Van de Sande, <em>EIP-55: Mixed-case checksum address encoding</em>, 2016.</li>
+    <li>G. Wood, <em>Ethereum: A Secure Decentralised Generalised Transaction Ledger</em> (Yellow Paper).</li>
     <li>Certicom Research, <em>SEC 2: Recommended Elliptic Curve Domain Parameters</em> (secp256k1).</li>
-    <li>P. Wuille, J. Nick, T. Ruffing, BIP 340: <em>Schnorr Signatures for secp256k1</em>.</li>
-    <li>I. Eyal, E. G. Sirer, <em>Majority is not Enough: Bitcoin Mining is Vulnerable</em>, Financial Cryptography 2014.</li>
-    <li>J. Breitner, N. Heninger, <em>Biased Nonce Sense: Lattice Attacks against Weak ECDSA Signatures in Cryptocurrencies</em>, Financial Cryptography 2019.</li>
-    <li>N. Howgrave-Graham, N. Smart, <em>Lattice Attacks on Digital Signature Schemes</em>, Designs, Codes and Cryptography, 2001.</li>
-    <li>S. Meiklejohn et al., <em>A Fistful of Bitcoins: Characterizing Payments Among Men with No Names</em>, IMC 2013.</li>
-    <li>ethereum.org documentation: Proof-of-stake and The Merge.</li>
+    <li>NIST, <em>FIPS 180-4: Secure Hash Standard</em> (SHA-2) and <em>FIPS 202: SHA-3 Standard</em>, 2015.</li>
+    <li>G. Bertoni, J. Daemen, M. Peeters, G. Van Assche, <em>The Keccak reference</em>, 2011.</li>
+    <li>RFC 8018 (PKCS #5: PBKDF2) and RFC 2104 (HMAC).</li>
+    <li>R. Rivest, A. Shamir, L. Adleman, <em>A method for obtaining digital signatures and public-key cryptosystems</em>, Communications of the ACM, 1978.</li>
+    <li>M. Abramowitz, I. Stegun, <em>Handbook of Mathematical Functions</em>, 1964, formula 7.1.26, and E. B. Wilson, M. M. Hilferty, <em>The distribution of chi-square</em>, PNAS, 1931 (approximations used in the tests).</li>
   </ul>
 
-  <footer>Homework 2 &middot; code: <code>js/sha256.js</code>, <code>js/ecc.js</code>, <code>js/hw2.js</code></footer>
+  <footer>Homework 2 &middot; code: <code>js/ecc.js</code>, <code>js/keccak.js</code>, <code>js/wallet.js</code>, <code>js/stats.js</code>, <code>js/hw2.js</code></footer>
 </main>
 <script src="js/sha256.js"></script>
 <script src="js/ecc.js"></script>
+<script src="js/keccak.js"></script>
+<script src="js/wallet.js"></script>
+<script src="js/stats.js"></script>
 <script src="js/hw2.js"></script>
 </body>
 </html>

@@ -1,21 +1,12 @@
-/* secp256k1 arithmetic + a toy elliptic-curve hash (ECMH style).
- * Curve: y^2 = x^3 + 7 over F_p  (the curve used by Bitcoin and Ethereum).
- * Educational code: BigInt, affine coordinates, NOT constant time, never use for real keys. */
+/* Elliptic curves y^2 = x^3 + b over F_p (BigInt, affine coordinates).
+ * The same Curve class is used for the toy curve of Homework 1 (p = 17) and for secp256k1.
+ * Educational code: not constant time, never use it for real keys. */
 (function (root) {
   'use strict';
-  const sha256 = root.sha256 || require('./sha256.js');
 
-  const P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2Fn;
-  const N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141n;
-  const B = 7n;
-  const G = {
-    x: 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798n,
-    y: 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8n,
-  };
+  const mod = (a, m) => { const r = a % m; return r >= 0n ? r : r + m; };
 
-  const mod = (a, m = P) => { const r = a % m; return r >= 0n ? r : r + m; };
-
-  function powmod(b, e, m = P) {
+  function powmod(b, e, m) {
     let r = 1n;
     b = mod(b, m);
     while (e > 0n) {
@@ -26,8 +17,8 @@
     return r;
   }
 
-  // modular inverse via extended Euclid
-  function inv(a, m = P) {
+  // modular inverse with the extended Euclid algorithm
+  function inv(a, m) {
     let r0 = mod(a, m), r1 = m, s0 = 1n, s1 = 0n;
     while (r1 !== 0n) {
       const q = r0 / r1;
@@ -38,32 +29,72 @@
     return mod(s0, m);
   }
 
-  // The point at infinity is represented by null.
-  const isOnCurve = (pt) => pt === null || mod(pt.y * pt.y - pt.x * pt.x * pt.x - B) === 0n;
+  // A point is {x, y}; the point at infinity (the neutral element) is null.
+  class Curve {
+    constructor(p, b, G, n = null) { this.p = p; this.b = b; this.G = G; this.n = n; }
 
-  function add(a, b) {
-    if (a === null) return b;
-    if (b === null) return a;
-    let lambda;
-    if (a.x === b.x) {
-      if (mod(a.y + b.y) === 0n) return null; // a = -b
-      lambda = mod(3n * a.x * a.x * inv(2n * a.y));
-    } else {
-      lambda = mod((b.y - a.y) * inv(b.x - a.x));
+    isOnCurve(P) {
+      return P === null || mod(P.y * P.y - P.x ** 3n - this.b, this.p) === 0n;
     }
-    const x = mod(lambda * lambda - a.x - b.x);
-    return { x, y: mod(lambda * (a.x - x) - a.y) };
-  }
 
-  function mul(k, pt = G) {
-    k = mod(k, N);
-    let acc = null, base = pt;
-    while (k > 0n) {
-      if (k & 1n) acc = add(acc, base);
-      base = add(base, base);
-      k >>= 1n;
+    neg(P) { return P === null ? null : { x: P.x, y: mod(-P.y, this.p) }; }
+
+    // slope of the chord through P and Q, or of the tangent when P = Q (the curve has a = 0)
+    slope(P, Q) {
+      const p = this.p;
+      if (P.x === Q.x) return mod(3n * P.x * P.x * inv(2n * P.y, p), p);
+      return mod((Q.y - P.y) * inv(Q.x - P.x, p), p);
     }
-    return acc;
+
+    add(P, Q) {
+      if (P === null) return Q;
+      if (Q === null) return P;
+      if (P.x === Q.x && mod(P.y + Q.y, this.p) === 0n) return null;   // Q = -P
+      const l = this.slope(P, Q);
+      const x = mod(l * l - P.x - Q.x, this.p);
+      return { x, y: mod(l * (P.x - x) - P.y, this.p) };
+    }
+
+    // double-and-add, from the most significant bit of k down to the least significant one.
+    // If steps is an array, every doubling and addition is recorded in it.
+    mul(k, P = this.G, steps = null) {
+      if (this.n !== null) k = mod(k, this.n);
+      let R = null;
+      for (const bit of k.toString(2)) {
+        R = this.add(R, R);
+        if (steps) steps.push({ op: 'double', bit, R });
+        if (bit === '1') {
+          R = this.add(R, P);
+          if (steps) steps.push({ op: 'add', bit, R });
+        }
+      }
+      return R;
+    }
+
+    // order of P by brute force (only for small curves)
+    order(P) {
+      let R = P, i = 1;
+      while (R !== null) { R = this.add(R, P); i++; }
+      return i;
+    }
+
+    // discrete logarithm by brute force: the smallest k >= 1 with k*P = Q (feasible only on tiny curves)
+    dlog(P, Q) {
+      let R = P;
+      for (let k = 1n; R !== null; k++, R = this.add(R, P)) {
+        if (R.x === Q.x && R.y === Q.y) return k;
+      }
+      return null;
+    }
+
+    // all affine points by brute force (only for small p)
+    points() {
+      const out = [];
+      for (let x = 0n; x < this.p; x++) {
+        for (let y = 0n; y < this.p; y++) if (this.isOnCurve({ x, y })) out.push({ x, y });
+      }
+      return out;
+    }
   }
 
   // ---------- byte helpers ----------
@@ -78,46 +109,31 @@
     return out;
   }
   const toHex = (u8) => Array.from(u8, (b) => b.toString(16).padStart(2, '0')).join('');
+  const hexToBytes = (h) => Uint8Array.from(h.match(/../g) || [], (b) => parseInt(b, 16));
   const utf8 = (s) => new TextEncoder().encode(s);
-
-  // ---------- toy hash: map a message to a curve point ("try and increment") ----------
-  // H(m): for ctr = 0,1,2,... take x = SHA256(0x01 || ctr || m) mod p. If x^3+7 is a
-  // quadratic residue, a point exists; its sign is taken from an independent hash bit.
-  // About half of the x values work, so on average two attempts are needed.
-  const SQRT_EXP = (P + 1n) / 4n; // valid because p = 3 (mod 4)
-
-  function hashToPoint(msg) {
-    for (let ctr = 0; ; ctr++) {
-      const pre = new Uint8Array(5 + msg.length);
-      pre[0] = 1;
-      new DataView(pre.buffer).setUint32(1, ctr);
-      pre.set(msg, 5);
-      const h = sha256(pre);
-      const x = bytesToBig(h) % P;
-      const rhs = mod(x * x * x + B);
-      const y0 = powmod(rhs, SQRT_EXP);
-      if (mod(y0 * y0) !== rhs) continue;
-      const signBit = sha256(Uint8Array.from([2, ...h]))[0] & 1;
-      const y = (y0 & 1n) === BigInt(signBit) ? y0 : P - y0;
-      return { point: { x, y }, counter: ctr };
-    }
-  }
-
-  // ECMH: hash of a multiset = sum of the hashes of its elements (group operation).
-  function multisetHash(msgs) {
-    let acc = null;
-    for (const m of msgs) acc = add(acc, hashToPoint(m).point);
-    return acc;
-  }
-
-  function compress(pt) {
-    if (pt === null) return '00';
-    return (pt.y & 1n ? '03' : '02') + toHex(bigToBytes(pt.x));
-  }
-
-  root.ECC = {
-    P, N, B, G, mod, powmod, inv, isOnCurve, add, mul,
-    bytesToBig, bigToBytes, toHex, utf8, hashToPoint, multisetHash, compress,
+  const concat = (...arrs) => {
+    const out = new Uint8Array(arrs.reduce((n, a) => n + a.length, 0));
+    let o = 0;
+    for (const a of arrs) { out.set(a, o); o += a.length; }
+    return out;
   };
+
+  // ---------- the two curves ----------
+  const toy = new Curve(17n, 7n, { x: 1n, y: 5n });          // y^2 = x^3 + 7 (mod 17), G = (1, 5)
+
+  const secp256k1 = new Curve(                                // y^2 = x^3 + 7 over p = 2^256 - 2^32 - 977
+    0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2Fn,
+    7n,
+    {
+      x: 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798n,
+      y: 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8n,
+    },
+    0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141n,
+  );
+
+  // compressed SEC1 encoding: 02/03 (parity of y) followed by x
+  const compress = (pt) => (pt === null ? '00' : (pt.y & 1n ? '03' : '02') + toHex(bigToBytes(pt.x)));
+
+  root.ECC = { Curve, toy, secp256k1, mod, powmod, inv, bytesToBig, bigToBytes, toHex, hexToBytes, utf8, concat, compress };
   if (typeof module !== 'undefined') module.exports = root.ECC;
 })(typeof window !== 'undefined' ? window : globalThis);

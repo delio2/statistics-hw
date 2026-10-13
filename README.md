@@ -7,9 +7,9 @@ https://delio2.github.io/statistics-hw/
 
 | Page | Content |
 | --- | --- |
-| `homework1.html` | A toy hash built on the elliptic curve secp256k1 and a statistical study of its output |
-| `homework2.html` | Cryptography and statistics in Bitcoin and Ethereum, with two small simulations |
+| `homework1.html` | Private key to public key on the toy curve y² = x³ + 7 (mod 17), double-and-add, an animation and a statistical exploration |
+| `homework2.html` | The Ethereum wallet pipeline: BIP-39, BIP-32, BIP-44, secp256k1, Keccak-256 and EIP-55, with a live demo and statistical tests |
 
-Code (`js/`): `sha256.js` (SHA-256), `ecc.js` (secp256k1 arithmetic and the toy hash), `stats.js` (statistical tests), `hw1.js` and `hw2.js` (page logic).
+Code (`js/`): `ecc.js` (elliptic curves, toy curve and secp256k1), `sha256.js`, `keccak.js`, `wallet.js` (BIP-39/32/44 and EIP-55), `stats.js` and `toystats.js` (statistics), `hw1.js` and `hw2.js` (page logic).
 
 Educational code: not constant time, do not use it for real keys.

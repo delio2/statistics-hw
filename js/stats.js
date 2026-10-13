@@ -26,6 +26,21 @@
     return 1 - normalCdf(z);
   }
 
+  // Pearson correlation coefficient of two equally long arrays of numbers
+  function pearson(xs, ys) {
+    const n = xs.length;
+    const mx = xs.reduce((a, b) => a + b, 0) / n, my = ys.reduce((a, b) => a + b, 0) / n;
+    let sxy = 0, sxx = 0, syy = 0;
+    for (let i = 0; i < n; i++) {
+      sxy += (xs[i] - mx) * (ys[i] - my);
+      sxx += (xs[i] - mx) ** 2;
+      syy += (ys[i] - my) ** 2;
+    }
+    return sxx === 0 || syy === 0 ? 0 : sxy / Math.sqrt(sxx * syy);
+  }
+
+  const popcount = (n) => { let c = 0; while (n) { c += n & 1; n >>= 1; } return c; };
+
   const randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n));
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -96,6 +111,6 @@
     };
   }
 
-  root.Stats = { hamming, normalCdf, chi2PValue, runExperiment };
+  root.Stats = { hamming, popcount, pearson, normalCdf, chi2PValue, runExperiment };
   if (typeof module !== 'undefined') module.exports = root.Stats;
 })(typeof window !== 'undefined' ? window : globalThis);
