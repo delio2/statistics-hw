@@ -16,9 +16,8 @@
   <h1>Homework 2 - From wallet seed to Ethereum address</h1>
   <p class="sub">Hashing, key derivation and cryptographic primitives in the Ethereum wallet pipeline, and their statistical properties.</p>
 
-  <p>A wallet does not store a list of addresses. It keeps one secret and derives everything else from it. In this homework I follow the whole path from the
-    mnemonic phrase to a checksummed Ethereum address, explain the role of each standard and primitive, put them in their historical context, and look at their statistical properties.
-    Instead of using a wallet application, I implemented the pipeline in JavaScript and checked it against public test vectors.</p>
+  <p>A wallet does not store a list of addresses: it keeps one secret and derives everything else from it. In this homework I follow the path from the mnemonic phrase to a checksummed
+    Ethereum address, say what each standard and primitive does, put them in their historical context and look at their statistical properties.</p>
 
   <h2>1. The pipeline at a glance</h2>
   <table>
@@ -34,102 +33,60 @@
   </table>
   <p>Steps 1 to 3 manage the secret (generation and derivation of keys), step 4 is public-key cryptography, and steps 5 and 6 produce the public identifier.</p>
 
-  <h2>2. The pipeline step by step (live)</h2>
-  <div class="card">
-    <p class="warn"><strong>Use test phrases only.</strong> Never type a real seed phrase into a web page, this one included. The two example phrases are public test vectors:
-      any funds sent to their addresses would be stolen immediately.</p>
-    <label for="w-mn">Mnemonic phrase</label>
-    <textarea id="w-mn" rows="3" spellcheck="false" autocomplete="off">abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about</textarea>
-    <div class="row">
-      <div><label for="w-pass">Passphrase (optional)</label><input type="text" id="w-pass" autocomplete="off"></div>
-      <div><label for="w-path">Derivation path (BIP-44)</label><input type="text" id="w-path" value="m/44'/60'/0'/0/0" autocomplete="off"></div>
-    </div>
-    <div class="btns">
-      <button id="w-run">Run the pipeline</button>
-      <button id="w-ex1" class="secondary">Example 1</button>
-      <button id="w-ex2" class="secondary">Example 2</button>
-    </div>
-    <p id="w-err" class="fail"></p>
-    <table id="w-out" hidden></table>
-  </div>
-  <p>The two examples are the standard BIP-39 test phrase ("abandon ... about") and the default phrase of the Hardhat development tool ("test ... junk"). For both, the address obtained here
-    is the one that wallets show for the first account. I also checked the BIP-32 code against the first test vector of the BIP-32 specification.</p>
+  <h2>2. A worked example</h2>
+  <p>These are all the stages for the standard BIP-39 test phrase, with the path m/44'/60'/0'/0/0 (first Ethereum account). It is a public test vector: never use it for real funds.
+    The values were computed for this homework (long values are shortened); the final address is the well-known one that wallets show for this phrase.</p>
+  <table>
+    <thead><tr><th>Stage</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr><td>Entropy (128 bits)</td><td class="mono-wrap">00000000000000000000000000000000</td></tr>
+      <tr><td>Mnemonic (BIP-39)</td><td>abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about</td></tr>
+      <tr><td>Seed, 512 bits (BIP-39)</td><td class="mono-wrap">5eb00bbddcf06908…ce9e38e4</td></tr>
+      <tr><td>Master private key (BIP-32)</td><td class="mono-wrap">1837c1be8e2995ec…a21cdf67</td></tr>
+      <tr><td>Private key at the path (BIP-32, BIP-44)</td><td class="mono-wrap">1ab42cc412b618bd…fb12b727</td></tr>
+      <tr><td>Public key x and y (secp256k1)</td><td class="mono-wrap">x = 37b0bb7a8288d38e…d600f299<br>y = a6179912b7451c09…4e024230</td></tr>
+      <tr><td>Keccak-256 of x and y</td><td class="mono-wrap">515249c905300cbdd29f91a4<strong>9858effd232b4033e47d90003d41ec34ecaeda94</strong></td></tr>
+      <tr><td>Address: the last 20 bytes (in bold above)</td><td class="mono-wrap">0x9858effd232b4033e47d90003d41ec34ecaeda94</td></tr>
+      <tr><td>Checksummed address (EIP-55)</td><td class="mono-wrap"><strong>0x9858EfFD232B4033E47d90003D41EC34EcaEda94</strong></td></tr>
+    </tbody>
+  </table>
 
   <h2>3. The six building blocks</h2>
 
   <h3>BIP-39: mnemonic sentence and seed</h3>
-  <p><strong>Purpose:</strong> a backup of the secret that a human can write down. A random entropy of 128 to 256 bits (a multiple of 32) receives a checksum, the first ENT/32 bits of its SHA-256 hash,
-    and the result is cut in groups of 11 bits. Each group is the index of a word in a fixed list of 2048 words, so 128 bits give 12 words and 256 bits give 24. The checksum lets a wallet notice a mistyped phrase.</p>
-  <div class="card">
-    <label for="e-hex">Entropy in hexadecimal (16 to 32 bytes)</label>
-    <input type="text" id="e-hex" value="00000000000000000000000000000000" autocomplete="off">
-    <div id="e-out"></div>
-  </div>
-  <p>With the all-zero entropy the indices are eleven 0 and one 3, which in the official English list are the words "abandon" (index 0) and "about" (index 3): this is the test phrase used above.
-    The mnemonic is then turned into a seed. The seed does not need the word list, because it is computed from the text of the phrase (<code>js/wallet.js</code>):</p>
-  <pre><code>// seed = PBKDF2-HMAC-SHA512(password = mnemonic, salt = "mnemonic" + passphrase, 2048 iterations, 64 bytes)
-async function mnemonicToSeed(mnemonic, passphrase = '') {
-  const key = await subtle.importKey('raw', utf8(mnemonic.normalize('NFKD')), 'PBKDF2', false, ['deriveBits']);
-  const salt = utf8('mnemonic' + passphrase.normalize('NFKD'));
-  return new Uint8Array(await subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-512', salt, iterations: 2048 }, key, 512));
-}</code></pre>
-  <p>The salt is the string "mnemonic" followed by an optional passphrase, so the same phrase with another passphrase gives a completely different wallet. The 2048 iterations make every guess more expensive for an attacker.</p>
+  <p><strong>Purpose:</strong> a backup of the secret that a human can write down. A random entropy of 128 to 256 bits (a multiple of 32) gets a checksum, the first ENT/32 bits of its SHA-256 hash,
+    and the result is cut in groups of 11 bits. Each group is the index of a word in a fixed list of 2048 words, so 128 bits give 12 words and 256 bits give 24.
+    In the example, 128 zero bits have checksum bits 0011, so the groups are eleven times 00000000000 (word 0, "abandon") and 00000000011 (word 3, "about").
+    The phrase is then turned into the seed with PBKDF2-HMAC-SHA512 (2048 iterations, salt "mnemonic" plus an optional passphrase): the same phrase and passphrase always give the same seed,
+    and another passphrase gives a completely different wallet.</p>
 
   <h3>BIP-32: hierarchical deterministic (HD) key derivation</h3>
   <p><strong>Purpose:</strong> one seed, a whole tree of keys. The master private key and a chain code are the two halves of HMAC-SHA512 with key "Bitcoin seed" applied to the seed.
-    A child key is computed from the parent key, the parent chain code and an index: <code>I = HMAC-SHA512(chain code, data)</code>, the child key is the left half of I plus the parent key (mod n),
+    A child key is computed from the parent key, the parent chain code and an index: <code>I = HMAC-SHA512(chain code, data)</code>; the child key is the left half of I plus the parent key (mod n),
     and the right half of I is the new chain code. Indexes from 2<sup>31</sup> on are hardened (the data contains the parent private key); the others use the parent public key.
-    Nothing has to be stored except the seed, and the same seed always rebuilds the same tree (<code>js/wallet.js</code>):</p>
-  <pre><code>// child key derivation (private parent -&gt; private child)
-async function childKey(parent, index) {
-  const k = bytesToBig(parent.key);
-  const data = index &gt;= HARDENED
-    ? concat(Uint8Array.of(0), parent.key, ser32(index))                        // hardened: uses the private key
-    : concat(E.hexToBytes(E.compress(C.mul(k))), ser32(index));                  // normal: uses the public key
-  const I = await hmacSha512(parent.chain, data);
-  const il = bytesToBig(I.slice(0, 32));
-  const child = (il + k) % C.n;
-  if (il &gt;= C.n || child === 0n) throw new Error('invalid key (probability &lt; 2^-127): use the next index');
-  return { key: bigToBytes(child), chain: I.slice(32) };
-}</code></pre>
+    Only the seed has to be stored, and the same seed always rebuilds the same tree.</p>
 
   <h3>BIP-44: standard derivation paths</h3>
   <p><strong>Purpose:</strong> a convention so that different wallets find the same accounts. The path is <code>m / purpose' / coin_type' / account' / change / address_index</code>, where the apostrophe means hardened.
-    The purpose is 44, the coin type is 60 for Ethereum (the numbers are listed in the SLIP-44 registry), then the account number, 0 for external addresses, and the index of the address.
-    So <code>m/44'/60'/0'/0/0</code> is the first address of the first Ethereum account, the one many wallets, such as MetaMask, show first.</p>
+    The purpose is 44, the coin type is 60 for Ethereum (the numbers are in the SLIP-44 registry), then the account, 0 for external addresses, and the index of the address.
+    So <code>m/44'/60'/0'/0/0</code> is the first address of the first account, the one many wallets, such as MetaMask, show first.</p>
 
   <h3>secp256k1: public-key cryptography</h3>
-  <p><strong>Purpose:</strong> to turn a private key into a public key that anyone can use to check signatures. The private key is a 256-bit integer k between 1 and n - 1, and the public key is the point Q = kG
-    of the curve y&sup2; = x&sup3; + 7, the same arithmetic as in Homework 1 but over a 256-bit prime field. Going back from Q to k is the elliptic curve discrete logarithm problem, which costs about 2<sup>128</sup> operations.
-    The curve is defined in SEC 2 and Bitcoin has used it since 2009; Ethereum signs transactions with ECDSA on it. Ethereum uses the 64 bytes x and y of the public key (<code>js/wallet.js</code>):</p>
-  <pre><code>function publicKey(privateKey) {                 // the 64 bytes x || y (Ethereum drops the 0x04 prefix)
-  const Q = C.mul(bytesToBig(privateKey));
-  return { x: Q.x, y: Q.y, bytes: concat(bigToBytes(Q.x), bigToBytes(Q.y)) };
-}
-
-const addressBytes = (pubBytes) =&gt; K.keccak256(pubBytes).slice(12);          // last 20 bytes of Keccak-256</code></pre>
+  <p><strong>Purpose:</strong> to turn the private key into a public key that anyone can use to check signatures. The private key is an integer k between 1 and n - 1 (256 bits), and the public key is the point Q = kG
+    of the curve y&sup2; = x&sup3; + 7, the arithmetic of Homework 1 over a 256-bit prime; Ethereum uses its 64 bytes x and y. Going back from Q to k is the elliptic curve discrete logarithm problem,
+    which costs about 2<sup>128</sup> operations. The curve is defined in SEC 2 and Bitcoin has used it since 2009; Ethereum signs transactions with ECDSA on it.</p>
 
   <h3>Keccak-256: hashing</h3>
-  <p><strong>Purpose:</strong> to compress the 64-byte public key into a short, fixed-size identifier. Ethereum computes Keccak-256 of x and y and keeps the last 20 bytes (160 bits): that is the address
-    (the last line of the code above). Keccak is a sponge: the message is absorbed, block by block, into a 1600-bit state through the permutation Keccak-f (24 rounds); with a rate of 1088 bits and a capacity of 512 bits,
-    256 bits are then squeezed out. It is a hash function: no key, a fixed-size output, and it is easy to compute but hard to invert.</p>
+  <p><strong>Purpose:</strong> to compress the 64-byte public key into a short, fixed-size identifier: the address is the last 20 bytes (160 bits) of the Keccak-256 hash of x and y.
+    Keccak is a sponge: the message is absorbed, block by block, into a 1600-bit state through the permutation Keccak-f (24 rounds), and then 256 bits are squeezed out.
+    It is a hash function: no key, a fixed-size output, easy to compute and hard to invert.</p>
 
   <h3>EIP-55: mixed-case checksum</h3>
-  <p><strong>Purpose:</strong> to detect typing errors in an address without changing its format. Take the lower-case hexadecimal address (without 0x), compute the Keccak-256 hash of that text, and write each letter a to f
-    in capitals if the corresponding hexadecimal digit of the hash is 8 or more. The pattern of capitals is the checksum; software that ignores the case still reads the address (<code>js/wallet.js</code>):</p>
-  <pre><code>// EIP-55: a hex letter is written in upper case when the matching nibble of Keccak-256(lower-case address) is &gt;= 8
-function toChecksumAddress(addressHex) {
-  const lower = addressHex.toLowerCase().replace(/^0x/, '');
-  const hash = toHex(K.keccak256(utf8(lower)));
-  let out = '0x';
-  for (let i = 0; i &lt; lower.length; i++) {
-    out += /[a-f]/.test(lower[i]) &amp;&amp; parseInt(hash[i], 16) &gt;= 8 ? lower[i].toUpperCase() : lower[i];
-  }
-  return out;
-}</code></pre>
+  <p><strong>Purpose:</strong> to detect typing errors in an address without changing its format. Take the lower-case hexadecimal address (without 0x), compute the Keccak-256 hash of that text,
+    and write each letter a to f in capitals if the corresponding hexadecimal digit of the hash is 8 or more. The capitals are the checksum, and software that ignores the case still reads the address.
+    In the example, <code>9858effd...</code> becomes <code>9858EfFD...</code>.</p>
 
   <h2>4. Key generation, derivation, public-key cryptography, hashing, checksums and encoding</h2>
-  <p>These five ideas are easy to confuse. In the pipeline they are clearly separated:</p>
   <table>
     <thead><tr><th>Concept</th><th>What it is</th><th>In the pipeline</th></tr></thead>
     <tbody>
@@ -147,12 +104,12 @@ function toChecksumAddress(addressHex) {
   <table>
     <thead><tr><th>Year</th><th>Technology</th><th>Note</th></tr></thead>
     <tbody>
-      <tr><td>1977</td><td>RSA</td><td>The first widely used public-key cryptosystem (published in 1978). The pipeline uses elliptic curves instead, but the idea of a key pair is the same.</td></tr>
+      <tr><td>1977</td><td>RSA</td><td>The first widely used public-key cryptosystem (published in 1978). The pipeline uses elliptic curves, but the idea of a key pair is the same.</td></tr>
       <tr><td>2001</td><td>SHA-2 (SHA-256, SHA-512, ...)</td><td>NIST standard (FIPS 180-2, final in 2002). SHA-256 gives the BIP-39 checksum, SHA-512 is inside PBKDF2 and HMAC.</td></tr>
       <tr><td>2012</td><td>BIP-32</td><td>Hierarchical deterministic wallets.</td></tr>
       <tr><td>2013</td><td>BIP-39</td><td>Mnemonic code for deterministic wallets.</td></tr>
       <tr><td>2014</td><td>BIP-44</td><td>Multi-account hierarchy: standard paths.</td></tr>
-      <tr><td>2015</td><td>SHA-3 (FIPS 202)</td><td>Standardised by NIST, based on Keccak, which had won the SHA-3 competition in 2012. Ethereum went live in 2015 using Keccak.</td></tr>
+      <tr><td>2015</td><td>SHA-3 (FIPS 202)</td><td>Standardised by NIST, based on Keccak, which had won the SHA-3 competition in 2012.</td></tr>
       <tr><td>2016</td><td>EIP-55</td><td>Mixed-case checksum for Ethereum addresses.</td></tr>
     </tbody>
   </table>
@@ -164,70 +121,47 @@ function toChecksumAddress(addressHex) {
     <tbody>
       <tr><td>Standard</td><td>FIPS 180-2 (2001-2002), now FIPS 180-4</td><td>FIPS 202 (2015). Keccak won the NIST competition (2007-2012)</td></tr>
       <tr><td>Construction</td><td>Merkle-Damgard: a compression function applied block after block</td><td>Sponge: absorb into a 1600-bit state, apply a permutation, squeeze</td></tr>
-      <tr><td>Size</td><td>SHA-256: 512-bit blocks, 32-bit words, 64 rounds. SHA-512: 1024-bit blocks, 64-bit words, 80 rounds</td><td>Rate 1088 bits for a 256-bit output, 24 rounds of Keccak-f[1600]</td></tr>
       <tr><td>Length extension</td><td>Possible for SHA-256 and SHA-512 (not for truncated versions such as SHA-384)</td><td>Not possible</td></tr>
       <tr><td>In the wallet</td><td>SHA-256: BIP-39 checksum. SHA-512: PBKDF2 and BIP-32</td><td>Keccak-256: address and EIP-55</td></tr>
     </tbody>
   </table>
   <p>They are related historically and both are cryptographic hash functions. SHA-3 was chosen with a completely different design from SHA-2, so that a weakness found in one family would not affect the other.
     Ethereum was built on the Keccak submission before the standard was final. Then NIST added domain-separation bits to the padding in FIPS 202 (the suffix 0x06 for SHA3-256 instead of 0x01), so
-    <strong>Ethereum's Keccak-256 is not the standardised SHA3-256</strong>: the permutation is the same, the padding is different, and the digests are different. In my code the only difference is one number (<code>js/keccak.js</code>):</p>
-  <pre><code>const padded = new Uint8Array(Math.ceil((msg.length + 1) / rate) * rate);
-padded.set(msg);
-padded[msg.length] ^= suffix;                          // domain-separation / padding byte
-padded[padded.length - 1] ^= 0x80;                     // final bit of the pad10*1 rule
-
-keccak256: (msg) =&gt; sponge(msg, 136, 0x01, 32),
-sha3_256: (msg) =&gt; sponge(msg, 136, 0x06, 32),</code></pre>
-  <div class="card">
-    <label for="h-in">Text to hash</label>
-    <input type="text" id="h-in" value="abc" autocomplete="off">
-    <table id="h-out"></table>
-  </div>
+    <strong>Ethereum's Keccak-256 is not the standardised SHA3-256</strong>: the permutation is the same, the padding is different, and the digests are different. For the text "abc":</p>
+  <table>
+    <tbody>
+      <tr><th>SHA-256 (SHA-2)</th><td class="mono-wrap">ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad</td></tr>
+      <tr><th>Keccak-256 (Ethereum)</th><td class="mono-wrap">4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45</td></tr>
+      <tr><th>SHA3-256 (NIST)</th><td class="mono-wrap">3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532</td></tr>
+    </tbody>
+  </table>
 
   <h2>6. Why several different primitives?</h2>
   <p>Each step has its own job and its own security goal, so no single algorithm could do everything:</p>
   <ul>
-    <li><strong>BIP-39 / BIP-32 / BIP-44: key management and derivation.</strong> They make one short secret enough to rebuild every key, they give a standard way to back it up (words) and to organise accounts (paths),
+    <li><strong>BIP-39 / BIP-32 / BIP-44: key management and derivation.</strong> One short secret is enough to rebuild every key; there is a standard way to back it up (words) and to organise accounts (paths),
       so that different wallets agree.</li>
-    <li><strong>secp256k1: the relation between private and public key, and signatures.</strong> Only this step lets someone prove ownership without revealing the secret and lets everyone check it.
+    <li><strong>secp256k1: the relation between private and public key, and digital signatures.</strong> Only this step lets someone prove ownership without revealing the secret and lets everyone check it.
       A hash function has no such key pair.</li>
     <li><strong>Keccak-256: hashing.</strong> It shortens the public key to a fixed 20-byte identifier. A curve cannot compress arbitrary data in that way.</li>
     <li><strong>EIP-55: checksum and error detection.</strong> It protects against typing mistakes, which none of the other steps does, and it does so without changing the address format.</li>
   </ul>
-  <p>Going down the pipeline is easy and going up is hard, so the public values (public key and address) can be shown to anyone, while the seed and the private key must be kept secret.
-    Separating the steps also lets each one be reused or replaced on its own: for example, BIP-39 and BIP-32 are shared by Bitcoin and Ethereum wallets.</p>
+  <p>Going down the pipeline is easy and going up is hard, so the public values (public key and address) can be shown to anyone, while the seed and the private key must be kept secret.</p>
 
   <h2>7. Statistical properties</h2>
   <p>Each step needs its output to look uniformly random and unrelated to its input; otherwise a secret could be guessed or two identifiers could collide.</p>
-  <ul>
-    <li><strong>Entropy of the phrase.</strong> A 12-word phrase carries 128 bits (132 encoded bits minus 4 checksum bits), a 24-word phrase 256 bits. Searching 2<sup>128</sup> possibilities is out of reach, but only if the entropy comes
-      from a good random source: a phrase chosen by hand has far fewer bits.</li>
-    <li><strong>Seed.</strong> The PBKDF2-HMAC-SHA512 output should be indistinguishable from 512 random bits. The 2048 iterations multiply by 2048 (about 11 bits) the work needed to test one guess of the passphrase,
-      but they add no entropy.</li>
-    <li><strong>BIP-32.</strong> Each HMAC-SHA512 gives 512 pseudo-random bits. A child key would be invalid only if the left half were n or more, or the key were 0, which has probability below 2<sup>-127</sup>: it never happens in practice.</li>
-    <li><strong>Public key.</strong> The x-coordinate of kG looks uniform, as the secp256k1 tests of Homework 1 show.</li>
-    <li><strong>Address.</strong> Only 160 bits are kept. Finding two keys with the same address costs about 2<sup>80</sup> operations (birthday bound); finding a key for a given address costs about 2<sup>160</sup>,
-      more than the 2<sup>128</sup> needed to break the curve itself.</li>
-    <li><strong>EIP-55.</strong> A 40-digit random address contains on average 40 &middot; 6/16 = <span id="eip-bits">15</span> letters, and each letter carries one check bit.
-      A random typo passes the check with probability (13/16)<sup>40</sup> = <span id="eip-pass">0.0247%</span> on average, about 1 in 4000, while an all-lower-case address has no check at all.
-      An address with no letters has no checksum either.</li>
-  </ul>
-  <p>The hash functions can also be tested statistically. I feed the three functions of this homework with random 64-byte inputs (the size of a public key) and run the same tests as in Homework 1:
-    avalanche (flipping one input bit should flip each output bit with probability 1/2), bit balance, uniformity of the bytes (chi-square) and collisions on 16 truncated bits.</p>
-  <div class="card">
-    <div class="row">
-      <div><label for="n-hash">Number of random inputs</label><input type="number" id="n-hash" value="2000" min="200" max="5000"></div>
-    </div>
-    <button id="run-hash">Run the tests</button>
-    <progress id="prog-hash" value="0" max="1" hidden></progress>
-    <table id="hash-table" hidden>
-      <thead><tr><th>Test</th><th>Ideal</th><th>SHA-256</th><th>Keccak-256</th><th>SHA3-256</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
-  <p>The three functions pass in the same way. Keccak-256 and SHA3-256 are statistically indistinguishable, as expected for two functions that differ only in one padding byte, and SHA-256, from the other family,
-    behaves in the same way too. This is what the tests can say: that the common requirement holds. They cannot tell the families apart, and they cannot prove collision or preimage resistance.</p>
+  <table>
+    <thead><tr><th>Step</th><th>Statistical requirement</th><th>Numbers</th></tr></thead>
+    <tbody>
+      <tr><td>Entropy (BIP-39)</td><td>Uniformly random bits from a good random source.</td><td>12 words = 128 bits (132 encoded bits minus 4 checksum bits), 24 words = 256 bits. A phrase chosen by hand has far fewer bits.</td></tr>
+      <tr><td>Seed (PBKDF2-HMAC-SHA512)</td><td>Output indistinguishable from 512 random bits.</td><td>The 2048 iterations multiply by 2048 (about 11 bits) the work to test one guess of the passphrase; they add no entropy.</td></tr>
+      <tr><td>Child keys (BIP-32)</td><td>Each key pseudo-random and unrelated to its parent.</td><td>A child key is invalid only if the left half of I is n or more, or the key is 0: probability below 2<sup>-127</sup>.</td></tr>
+      <tr><td>Public key (secp256k1)</td><td>x(kG) should look uniform and reveal nothing about k.</td><td>At 256 bits the points are expected to look random (the toy curve of Homework 1 is too small to show it). Finding k costs about 2<sup>128</sup> operations.</td></tr>
+      <tr><td>Address (Keccak-256, 160 bits)</td><td>Uniform output and avalanche: flipping one input bit flips each output bit with probability 1/2.</td><td>Finding two keys with the same address costs about 2<sup>80</sup> operations (birthday bound); finding a key for a given address about 2<sup>160</sup>, more than the 2<sup>128</sup> of the curve.</td></tr>
+      <tr><td>Checksum (EIP-55)</td><td>Check bits that behave like random bits.</td><td>A random address has on average 40 &middot; 6/16 = 15 letters, each one a check bit. A random typo passes a digit with probability 10/16 + (6/16)(1/2) = 13/16, so the whole address with probability (13/16)<sup>40</sup> = 0.0247%, about 1 in 4000. An all-lower-case address has no check at all.</td></tr>
+    </tbody>
+  </table>
+  <p>Statistical checks of a hash function (bit balance, avalanche, uniformity, collisions) can reveal defects, as in Homework 1, but they cannot prove collision or preimage resistance.</p>
 
   <h2>References</h2>
   <ul>
@@ -242,16 +176,9 @@ sha3_256: (msg) =&gt; sponge(msg, 136, 0x06, 32),</code></pre>
     <li>G. Bertoni, J. Daemen, M. Peeters, G. Van Assche, <em>The Keccak reference</em>, 2011.</li>
     <li>RFC 8018 (PKCS #5: PBKDF2) and RFC 2104 (HMAC).</li>
     <li>R. Rivest, A. Shamir, L. Adleman, <em>A method for obtaining digital signatures and public-key cryptosystems</em>, Communications of the ACM, 1978.</li>
-    <li>M. Abramowitz, I. Stegun, <em>Handbook of Mathematical Functions</em>, 1964, formula 7.1.26, and E. B. Wilson, M. M. Hilferty, <em>The distribution of chi-square</em>, PNAS, 1931 (approximations used in the tests).</li>
   </ul>
 
-  <footer>Homework 2 &middot; code: <code>js/ecc.js</code>, <code>js/keccak.js</code>, <code>js/wallet.js</code>, <code>js/stats.js</code>, <code>js/hw2.js</code></footer>
+  <footer>Homework 2</footer>
 </main>
-<script src="js/sha256.js"></script>
-<script src="js/ecc.js"></script>
-<script src="js/keccak.js"></script>
-<script src="js/wallet.js"></script>
-<script src="js/stats.js"></script>
-<script src="js/hw2.js"></script>
 </body>
 </html>

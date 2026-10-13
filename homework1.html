@@ -14,32 +14,27 @@
 </nav>
 <main>
   <h1>Homework 1 - From a private key to a public key on a toy elliptic curve</h1>
-  <p class="sub">Scalar multiplication on y&sup2; = x&sup3; + 7 (mod 17), and a statistical look at its output.</p>
+  <p class="sub">Scalar multiplication on y&sup2; = x&sup3; + 7 (mod 17) and a statistical look at the results.</p>
 
-  <p>Elliptic-curve scalar multiplication works like a one-way function: from a private key <code>k</code> it is easy to compute the public key
-    <code>Q = kG</code>, but going back from <code>Q</code> to <code>k</code> is believed to be very hard (the elliptic curve discrete logarithm problem, ECDLP).
-    It looks a little like a hash function, but it is used for public-key cryptography and digital signatures, not for hashing.
-    In this homework I compute public keys on a toy curve that is small enough to see every step, I explore the statistics of the results,
-    and I discuss which properties matter for a one-way function and which belong to hash functions. The goal is to understand the idea, not to build a real cryptosystem.</p>
+  <p>Elliptic-curve scalar multiplication behaves like a one-way function: from a private key <code>k</code> it is easy to compute the public key <code>Q = kG</code>,
+    but recovering <code>k</code> from <code>Q</code> is believed to be very hard (the elliptic curve discrete logarithm problem, ECDLP). It resembles a hash function in some ways,
+    but it is used for public-key cryptography and digital signatures. Here I compute public keys on a toy curve, explore the statistics of the results, and discuss which properties
+    belong to one-way functions and which to hash functions. The goal is to understand the idea, not to build a real cryptosystem.</p>
 
   <h2>1. The toy curve, the base point and the private key</h2>
-  <p>Ethereum uses the curve secp256k1, <code>y&sup2; = x&sup3; + 7</code> over a field with a 256-bit prime. I use the same equation over a tiny field, p = 17,
-    with the base point and the private key suggested by the exercise:</p>
+  <p>Ethereum uses the curve secp256k1, y&sup2; = x&sup3; + 7 over a 256-bit prime. I use the same equation over the field F<sub>17</sub>, with the base point and the private key suggested by the exercise:</p>
   <pre>y&sup2; = x&sup3; + 7   (mod 17)
 G = (1, 5)             base point
 k = 6                  private key
 Q = kG                 public key</pre>
   <p>G is on the curve: 5&sup2; = 25 &equiv; 8 and 1&sup3; + 7 = 8 (mod 17). In the code the curve and G take one line (<code>js/ecc.js</code>):</p>
   <pre><code>const toy = new Curve(17n, 7n, { x: 1n, y: 5n });          // y^2 = x^3 + 7 (mod 17), G = (1, 5)</code></pre>
-  <p>The curve has <span id="f-count">17</span> points with coordinates in F<sub>17</sub>, plus the point at infinity O, which is the neutral element
-    (<span id="f-total">18</span> points in total; for p &equiv; 2 mod 3 the curve y&sup2; = x&sup3; + b always has p + 1 points). They are:</p>
+  <p>The curve has <span id="f-count">17</span> points plus the point at infinity O, the neutral element (18 in total):</p>
   <pre id="f-points"></pre>
-  <p>The base point G = (1, 5) has order n = <span id="f-order">9</span>: nG = O. The multiples of G repeat with period n, so only k mod n matters.
-    Other base points have other orders (the selector below shows them); the best choice on this curve would be a point of large prime order, but the group
-    has 18 = 2 &middot; 3&sup2; points, so there is none.</p>
+  <p>G has order n = 9 (nG = O), so only k mod 9 matters. Other points have other orders, shown in the selectors below.</p>
 
   <h2>2. Point addition</h2>
-  <p>Two points are added with the chord-and-tangent rule. All the arithmetic is done mod p:</p>
+  <p>Two points are added with the chord-and-tangent rule, with all the arithmetic mod p:</p>
   <pre>P + O = P                    P + (-P) = O,  where -(x, y) = (x, -y)
 if P &ne; Q:  &lambda; = (y<sub>2</sub> - y<sub>1</sub>) / (x<sub>2</sub> - x<sub>1</sub>)          (slope of the chord)
 if P = Q:  &lambda; = 3x<sub>1</sub>&sup2; / (2y<sub>1</sub>)                (slope of the tangent, the curve has a = 0)
@@ -60,13 +55,12 @@ add(P, Q) {
   const x = mod(l * l - P.x - Q.x, this.p);
   return { x, y: mod(l * (P.x - x) - P.y, this.p) };
 }</code></pre>
-  <p>Division mod p means multiplying by the modular inverse, found with the extended Euclid algorithm (<code>inv</code>). Worked example, 2G = G + G:
+  <p>Division mod p is a multiplication by the modular inverse (<code>inv</code>, extended Euclid algorithm). Worked example, 2G = G + G:
     &lambda; = 3&middot;1&sup2; / (2&middot;5) = 3/10. Since 10 &middot; 12 = 120 = 7&middot;17 + 1, the inverse of 10 is 12, so &lambda; = 3&middot;12 = 36 &equiv; 2.
     Then x<sub>3</sub> = 2&sup2; - 2&middot;1 = 2 and y<sub>3</sub> = 2(1 - 2) - 5 = -7 &equiv; 10, so 2G = (2, 10). It is on the curve: 10&sup2; = 100 &equiv; 15 = 2&sup3; + 7.</p>
 
   <h2>3. Computing G, 2G, 3G, ..., kG and the toy public key</h2>
-  <p>The program below takes a base point and a private key and prints G, 2G, 3G, ..., kG. The last point is the toy public key.
-    The defaults are the ones of the exercise (G = (1, 5), k = 6); change them to repeat the experiment.</p>
+  <p>The program prints G, 2G, 3G, ..., kG; the last point is the toy public key. The defaults are G = (1, 5) and k = 6; change them to repeat the experiment.</p>
   <div class="card">
     <div class="row">
       <div><label for="base">Base point G (point and its order)</label><select id="base"></select></div>
@@ -80,7 +74,7 @@ add(P, Q) {
     <p class="sub" id="mult-note"></p>
   </div>
   <p>Each line is the previous point plus G: a doubling (tangent) when the previous point is G itself, a chord otherwise.
-    Because G has order 9, the list would go on with 9G = O, 10G = G, and so on: k and k + 9 give the same public key.</p>
+    Since G has order 9, the list would go on with 9G = O, 10G = G, and so on: k and k + 9 give the same public key.</p>
 
   <h2>4. A faster method: double-and-add</h2>
   <p>Adding G one at a time needs k - 1 additions, which is hopeless for a 256-bit k. Double-and-add reads the binary digits of k from the most significant one:
@@ -89,7 +83,6 @@ add(P, Q) {
   <pre><code>// double-and-add, from the most significant bit of k down to the least significant one.
 // If steps is an array, every doubling and addition is recorded in it.
 mul(k, P = this.G, steps = null) {
-  if (this.n !== null) k = mod(k, this.n);
   let R = null;
   for (const bit of k.toString(2)) {
     R = this.add(R, R);
@@ -114,17 +107,11 @@ mul(k, P = this.G, steps = null) {
   </div>
 
   <h2>5. Slow-motion visualisation (optional)</h2>
-  <p>The picture shows the 17 points of the curve on the grid F<sub>17</sub> &times; F<sub>17</sub> (the curve is not a smooth line over a finite field, only a set of points).
-    The animation follows the computation for the base point and private key chosen in section 3, one step at a time.</p>
+  <p>The picture shows the 17 points of the curve on the grid F<sub>17</sub> &times; F<sub>17</sub> (over a finite field the curve is a set of points, not a line).
+    The animation follows the computation of G, 2G, ..., kG for the base point and private key chosen in section 3.</p>
   <div class="card">
-    <div class="row">
-      <div><label for="viz-mode">What to show</label>
-        <select id="viz-mode">
-          <option value="iter">G, 2G, 3G, ... (one addition per step)</option>
-          <option value="dbl">double-and-add (one doubling or addition per step)</option>
-        </select></div>
-      <div><label for="speed">Speed</label><input type="range" id="speed" min="1" max="10" value="4"></div>
-    </div>
+    <label for="speed">Speed</label>
+    <input type="range" id="speed" min="1" max="10" value="4">
     <canvas id="viz" width="640" height="640"></canvas>
     <p id="viz-text" class="sub"></p>
     <div class="btns">
@@ -135,26 +122,21 @@ mul(k, P = this.G, steps = null) {
   </div>
 
   <h2>6. Statistical exploration</h2>
-  <p>I repeat the experiment with every private key k = 1, ..., n - 1 for a base point, and look at the resulting points kG: the distribution of the x and y coordinates,
-    the frequency of each value, the distribution of bits, the apparent uniformity, the correlation between input and output, and avalanche-like behaviour
-    (what happens to the output when one bit of k changes).</p>
+  <p>I repeat the experiment with every private key k = 1, ..., n - 1 for a base point (any valid point can be chosen) and look at the resulting points kG: the distribution of the x and y coordinates,
+    the frequency of each value, the distribution of bits, the apparent uniformity, the correlation between input and output, and avalanche-like behaviour.</p>
   <div class="card">
+    <label for="s-base">Base point G (point and its order)</label>
+    <select id="s-base"></select>
+    <p id="s-summary"></p>
     <div class="row">
-      <div><label for="s-base">Base point G (point and its order)</label><select id="s-base"></select></div>
+      <div class="chart"><canvas id="ch-x" width="420" height="260"></canvas></div>
+      <div class="chart"><canvas id="ch-y" width="420" height="260"></canvas></div>
     </div>
-    <div id="s-out">
-      <p id="s-summary"></p>
-      <div class="row">
-        <div class="chart"><canvas id="ch-x" width="420" height="260"></canvas></div>
-        <div class="chart"><canvas id="ch-y" width="420" height="260"></canvas></div>
-      </div>
-      <table id="s-bits"></table>
-      <table id="s-tests"></table>
-    </div>
+    <table id="s-bits"></table>
+    <table id="s-tests"></table>
   </div>
-  <p>The two bar charts are the frequency of each value of x and y. The avalanche is measured on the 10-bit encoding of a point (5 bits for x, 5 bits for y):
-    for each k and each bit of k, I flip that bit and count how many output bits change, and I compare it with the mean distance between two different outputs chosen
-    at random. This is the central computation (<code>js/toystats.js</code>):</p>
+  <p>The avalanche is measured on the 10-bit encoding of a point (5 bits for x, 5 bits for y): for each k and each bit of k, I flip that bit and count how many output bits change,
+    and I compare it with the mean distance between two different outputs chosen at random (<code>js/toystats.js</code>):</p>
   <pre><code>const enc = (P) =&gt; (Number(P.x) &lt;&lt; nb) | Number(P.y);
 const out = pts.map(enc);
 const kbits = (n - 1).toString(2).length;
@@ -162,90 +144,47 @@ let sum = 0, cnt = 0;
 for (let k = 1; k &lt; n; k++) {
   for (let j = 0; j &lt; kbits; j++) {
     const k2 = k ^ (1 &lt;&lt; j);
-    if (k2 &gt;= 1 &amp;&amp; k2 &lt; n) { sum += S.popcount(out[k - 1] ^ out[k2 - 1]); cnt++; }
+    if (k2 &gt;= 1 &amp;&amp; k2 &lt; n) { sum += popcount(out[k - 1] ^ out[k2 - 1]); cnt++; }
   }
 }
 // baseline: mean distance between two different outputs chosen at random
 let bsum = 0, bcnt = 0;
-for (let a = 0; a &lt; m; a++) for (let b = 0; b &lt; m; b++) if (a !== b) { bsum += S.popcount(out[a] ^ out[b]); bcnt++; }</code></pre>
-
-  <p>A toy curve has very few points, so these numbers only show structure, not statistics in the usual sense. To see what happens at cryptographic size, I run the same kind of tests
-    on secp256k1 with random 256-bit private keys, using the output x(kG) (the same tests I use in Homework 2 for the hash functions):</p>
-  <div class="card">
-    <div class="row">
-      <div><label for="n-secp">Number of random private keys</label><input type="number" id="n-secp" value="200" min="50" max="1500"></div>
-    </div>
-    <button id="run-secp">Run on secp256k1</button>
-    <progress id="prog-secp" value="0" max="1" hidden></progress>
-    <table id="secp-table" hidden>
-      <thead><tr><th>Test</th><th>Ideal for a random output</th><th>secp256k1, x(kG)</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
-
-  <h3>Breaking the toy key</h3>
-  <p>The statistics cannot tell whether a one-way function is really hard to invert. The toy key is broken by trying k = 1, 2, 3, ... until kG equals the public key
-    (<code>js/ecc.js</code>):</p>
-  <pre><code>// discrete logarithm by brute force: the smallest k &gt;= 1 with k*P = Q (feasible only on tiny curves)
-dlog(P, Q) {
-  let R = P;
-  for (let k = 1n; R !== null; k++, R = this.add(R, P)) {
-    if (R.x === Q.x &amp;&amp; R.y === Q.y) return k;
-  }
-  return null;
-}</code></pre>
-  <div class="card">
-    <button id="run-dlog">Recover k from the public key of section 3</button>
-    <p id="dlog-out"></p>
-  </div>
-  <p>For secp256k1 the group has about 2<sup>256</sup> elements and the best generic attacks need about 2<sup>128</sup> operations. At 10<sup>12</sup> operations per second
-    that is about 10<sup>19</sup> years.</p>
+for (let a = 0; a &lt; m; a++) for (let b = 0; b &lt; m; b++) if (a !== b) { bsum += popcount(out[a] ^ out[b]); bcnt++; }</code></pre>
 
   <h2>7. Discussion: one-way function or hash function?</h2>
-  <p>A one-way function and a cryptographic hash function share the idea of being easy to compute and hard to invert, but they are asked to do different jobs,
+  <p>A one-way function and a cryptographic hash function share the idea of being easy to compute and hard to invert, but they do different jobs,
     so not every statistical property is meaningful for both.</p>
   <table>
     <thead><tr><th>Property</th><th>One-way function kG (public-key use)</th><th>Cryptographic hash function</th></tr></thead>
     <tbody>
       <tr><td>One-wayness</td><td>Essential. It rests on the ECDLP, a mathematical problem.</td><td>Essential (preimage resistance). It rests on the design and on cryptanalysis.</td></tr>
-      <tr><td>Distribution of the output and bit balance</td><td>Desirable: a public key should not leak structure about k. On the toy curve the outputs are a permutation of a subgroup, so they are exactly uniform on it by construction, which says nothing about security.</td><td>Required: every output bit should be unbiased and the output should look random for any input.</td></tr>
-      <tr><td>Frequency of values, collisions</td><td>Not a goal. kG is injective for k = 1, ..., n - 1, so there are no collisions, but there is also no compression.</td><td>Required: collision resistance, with arbitrary-length input compressed to a fixed length.</td></tr>
-      <tr><td>Correlation between input and output</td><td>There must be no useful correlation, but there is exact algebraic structure: (a + b)G = aG + bG, and x(kG) = x((n - k)G).</td><td>No correlation at all. Algebraic structure such as linearity is a weakness.</td></tr>
-      <tr><td>Avalanche effect</td><td>Not required: security comes from the ECDLP, not from diffusion. On secp256k1 it appears as a side effect.</td><td>A design goal: flipping one input bit should flip each output bit with probability 1/2 (strict avalanche criterion).</td></tr>
-      <tr><td>Homomorphic structure</td><td>The reason it is useful: key agreement and signatures use (a + b)G = aG + bG.</td><td>Undesirable.</td></tr>
-      <tr><td>Input and output size</td><td>The input is a scalar modulo n, the output a point of about the same size.</td><td>Any input length, fixed output length.</td></tr>
+      <tr><td>Distribution of the output, bit balance, uniformity</td><td>Desirable: a public key should not leak structure about k. On the toy curve the outputs are a permutation of a subgroup, so they are exactly uniform on it by construction, which says nothing about security.</td><td>Required: every output bit should be unbiased and the output should look random for any input.</td></tr>
+      <tr><td>Frequency of values, collisions</td><td>Not a goal. kG is injective for k = 1, ..., n - 1, so there are no collisions, but there is no compression either: the input is a scalar mod n, the output a point of about the same size.</td><td>Required: collision resistance, with an input of any length compressed to a fixed length.</td></tr>
+      <tr><td>Correlation between input and output</td><td>No useful correlation, but there is exact algebraic structure: (a + b)G = aG + bG, which is what makes key agreement and signatures possible, and x(kG) = x((n - k)G).</td><td>No correlation at all. Algebraic structure such as linearity is a weakness.</td></tr>
+      <tr><td>Avalanche effect</td><td>Not required: the security comes from the ECDLP, not from diffusion.</td><td>A design goal: flipping one input bit should flip each output bit with probability 1/2 (strict avalanche criterion).</td></tr>
     </tbody>
   </table>
   <p>What the exploration showed:</p>
   <ul>
-    <li><strong>Structure on the toy curve.</strong> Every point appears once and every x value twice (kG and (n - k)G are opposite points with the same x; the only exception is the point with y = 0, which is its own opposite), so x alone loses one bit.
-      The linear correlation between k and x is exactly 0 even though x depends on k: the correlation coefficient only detects linear dependence.</li>
-    <li><strong>Bits.</strong> The numbers 0 to 16 need 5 bits, but the top bit is 1 only for the value 16, so it is almost always 0. This comes from the tiny modulus and disappears on secp256k1,
-      where p is very close to a power of 2.</li>
-    <li><strong>Avalanche.</strong> With so few points the measured distance is of the same order as the distance between random pairs of outputs, but a sample of a few dozen flips cannot show much.
-      On secp256k1 about half of the output bits change, as for a random function.</li>
-    <li><strong>secp256k1.</strong> Bit balance, byte uniformity, collisions and correlation show no defect, so a public key looks random,
-      even though the algebraic structure is still there.</li>
-    <li><strong>Security.</strong> The toy key is broken with at most 8 additions, and the secp256k1 key would need about 2<sup>128</sup> operations, while both look random in the tests.</li>
+    <li><strong>Structure.</strong> Every point appears once and every x value twice: kG and (n - k)G are opposite points with the same x (the only exception is the point with y = 0, which is its own opposite),
+      so x alone loses one bit. The linear correlation between k and x is exactly 0 even though x depends on k: the coefficient only detects linear dependence.</li>
+    <li><strong>Bits.</strong> The numbers 0 to 16 need 5 bits, but the top bit is 1 only for the value 16, so it is almost always 0. This comes from the tiny modulus and would disappear with a 256-bit prime.</li>
+    <li><strong>Small sample.</strong> With at most 17 points the chi-square test is not reliable and the avalanche comparison is rough: the toy curve shows structure, not strong statistics.</li>
   </ul>
-  <p>So the statistical tests are necessary but not sufficient. They can reveal defects, they cannot prove one-wayness. For kG the proof of security is the hardness of the ECDLP,
-    which depends on the size of the group, and for a hash function it is the design and the lack of attacks. Uniformity, avalanche and the absence of structure are specifically
-    the properties asked from hash functions.</p>
+  <p>Statistical tests are necessary but not sufficient: they can reveal defects, they cannot prove one-wayness. The toy key may look random, yet it is broken by trying every k (at most n - 1 additions),
+    while secp256k1 has about 2<sup>256</sup> points and the best generic attacks need about 2<sup>128</sup> operations. Uniformity, avalanche and the absence of structure are the properties asked specifically
+    of hash functions; for kG the guarantee is the hardness of the ECDLP.</p>
 
   <h2>References</h2>
   <ul>
     <li>Certicom Research, <em>SEC 2: Recommended Elliptic Curve Domain Parameters</em> (secp256k1).</li>
     <li>D. Hankerson, A. Menezes, S. Vanstone, <em>Guide to Elliptic Curve Cryptography</em>, Springer, 2004 (point addition and double-and-add).</li>
-    <li>L. C. Washington, <em>Elliptic Curves: Number Theory and Cryptography</em>, 2nd ed., CRC Press, 2008 (number of points of y&sup2; = x&sup3; + b).</li>
     <li>A. F. Webster, S. E. Tavares, <em>On the design of S-boxes</em>, CRYPTO 1985 (strict avalanche criterion).</li>
-    <li>M. Abramowitz, I. Stegun, <em>Handbook of Mathematical Functions</em>, 1964, formula 7.1.26 (approximation of erf, used for the normal CDF).</li>
-    <li>E. B. Wilson, M. M. Hilferty, <em>The distribution of chi-square</em>, PNAS 17(12), 1931 (approximation used for the chi-square p-value).</li>
   </ul>
 
-  <footer>Homework 1 &middot; code: <code>js/ecc.js</code>, <code>js/stats.js</code>, <code>js/toystats.js</code>, <code>js/hw1.js</code></footer>
+  <footer>Homework 1 &middot; code: <code>js/ecc.js</code>, <code>js/toystats.js</code>, <code>js/hw1.js</code></footer>
 </main>
 <script src="js/ecc.js"></script>
-<script src="js/stats.js"></script>
 <script src="js/toystats.js"></script>
 <script src="js/hw1.js"></script>
 </body>
