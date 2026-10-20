@@ -18,9 +18,10 @@
   const keystream = (S) => bytesOf(S.x);                    // the 32 bytes of the x-coordinate of the shared point
   const xor = (a, b) => Uint8Array.from(a, (v, i) => v ^ b[i]);
 
-  // key generation: the private key d is restricted to 1 .. 2^bits (a small range, so that the experiments are feasible)
-  function keyPair(bits) {
-    const d = 1n + randomBelow(1n << BigInt(bits));
+  // key generation: the private key d is restricted to 1 .. 2^16 (a small range, so that the attack can run in the browser)
+  const KEY_BITS = 16;
+  function keyPair() {
+    const d = 1n + randomBelow(1n << BigInt(KEY_BITS));
     return { d, Q: C.mul(d) };
   }
 
@@ -47,6 +48,6 @@
     return null;
   }
 
-  root.ToyECC = { keyPair, encrypt, decrypt, searchKeys, keystream, bytesOf };
+  root.ToyECC = { KEY_BITS, keyPair, encrypt, decrypt, searchKeys };
   if (typeof module !== 'undefined') module.exports = root.ToyECC;
 })(typeof window !== 'undefined' ? window : globalThis);

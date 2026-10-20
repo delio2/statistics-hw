@@ -51,6 +51,6 @@
     return s;
   }
 
-  root.Caesar = { shift, encrypt, decrypt, letters, counts, MODEL, chiSquare, crack, bigramScore };
+  root.Caesar = { encrypt, decrypt, letters, crack, bigramScore };
   if (typeof module !== 'undefined') module.exports = root.Caesar;
 })(typeof window !== 'undefined' ? window : globalThis);

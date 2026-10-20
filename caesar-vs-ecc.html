@@ -29,7 +29,7 @@
   <h3>The toy ECC scheme</h3>
   <p>In Homework 1 a public key Q = dG was computed with scalar multiplication. A public key can also be used to encrypt, by combining it with a fresh secret key
     (this is the idea of ECIES, an elliptic-curve version of ElGamal encryption). As the exercise says, I use secp256k1 with the private key restricted to a small range
-    (1 to 2<sup>16</sup> by default), so that the attack of section 4 can run in the browser. (In Homework 1, exercise 1, the toy curve with p = 17 was suggested; it is too small to carry a message.)</p>
+    (1 to 2<sup>16</sup>), so that the attack of section 4 can run in the browser. (In Homework 1, exercise 1, the toy curve with p = 17 was suggested; it is too small to carry a message.)</p>
   <ol>
     <li><strong>Key generation.</strong> Choose a private key d in the small range and compute the public key Q = dG. Q is published and d is kept secret.</li>
     <li><strong>Encryption</strong> (by anyone who knows Q). Choose a fresh random secret r (256 bits), compute R = rG and the shared point S = rQ.
@@ -38,9 +38,10 @@
   </ol>
   <p><strong>Role of the keys:</strong> d is needed to decrypt, Q lets anyone encrypt, r is a one-time secret that makes every encryption different, R lets the receiver rebuild S without ever knowing r,
     and S is the secret that sender and receiver can both compute. The code (<code>js/toyecc.js</code>):</p>
-  <pre><code>// key generation: the private key d is restricted to 1 .. 2^bits (a small range, so that the experiments are feasible)
-function keyPair(bits) {
-  const d = 1n + randomBelow(1n &lt;&lt; BigInt(bits));
+  <pre><code>// key generation: the private key d is restricted to 1 .. 2^16 (a small range, so that the attack can run in the browser)
+const KEY_BITS = 16;
+function keyPair() {
+  const d = 1n + randomBelow(1n &lt;&lt; BigInt(KEY_BITS));
   return { d, Q: C.mul(d) };
 }
 
@@ -58,9 +59,6 @@ function decrypt({ R, c }, d) {
   return xor(c, keystream(S));
 }</code></pre>
   <div class="card">
-    <div class="row">
-      <div><label for="bits">Private key range: 1 to 2^bits (8 to 20)</label><input type="number" id="bits" value="16" min="8" max="20"></div>
-    </div>
     <button id="ecc-run">Generate a key pair, encrypt and decrypt</button>
     <p id="ecc-err"></p>
     <table id="ecc-out"></table>
@@ -84,32 +82,16 @@ const decrypt = (text, k) =&gt; shift(text, -k);</code></pre>
   <table>
     <thead><tr><th></th><th>Caesar cipher</th><th>Toy ECC scheme</th></tr></thead>
     <tbody>
-      <tr><td>Type</td><td>Symmetric: the same key k encrypts and decrypts.</td><td>Public-key: Q encrypts, d decrypts. The message itself is masked with a keystream.</td></tr>
-      <tr><td>Encryption</td><td>Add k to every letter (mod 26).</td><td>S = rQ, then c = message XOR the bytes of x(S).</td></tr>
-      <tr><td>Decryption</td><td>Subtract k from every letter.</td><td>S = dR, then message = c XOR the bytes of x(S).</td></tr>
+      <tr><td>Encryption</td><td>Add the key k to every letter (mod 26). The same key k is used to decrypt (symmetric cipher).</td><td>With the public key Q: choose a fresh random r, send R = rG and c = message XOR the bytes of x(S), where S = rQ (public-key scheme).</td></tr>
+      <tr><td>Decryption</td><td>Subtract k from every letter.</td><td>With the private key d: S = dR (= rQ), then message = c XOR the bytes of x(S).</td></tr>
       <tr><td>Key space</td><td>26 keys (25 useful).</td><td>Here 2<sup>16</sup> = 65,536 private keys. An unrestricted secp256k1 key has about 2<sup>256</sup> &asymp; 1.2 &middot; 10<sup>77</sup> values.</td></tr>
-      <tr><td>Randomness</td><td>None: the same message always gives the same ciphertext.</td><td>A fresh r every time: the same message gives different ciphertexts.</td></tr>
-      <tr><td>Statistical properties</td><td>The letter frequencies of the language are kept (only moved to other letters), so they reveal the key.</td><td>The keystream bytes behave like random bytes, so the ciphertext shows no letter statistics.</td></tr>
-      <tr><td>Message size</td><td>Any length.</td><td>32 bytes for each pair (R, c): a longer text needs a fresh r for every block.</td></tr>
+      <tr><td>Statistical properties</td><td>Every letter is always replaced by the same letter, so the letter frequencies of the language are kept (only moved by k places) and reveal the key.</td><td>Each byte is XORed with a byte of x(S), which is different for every fresh r and looks random: the ciphertext bytes look uniformly random whatever the message is, so there are no letter statistics to exploit.</td></tr>
     </tbody>
   </table>
-  <p>To see the statistical difference I encrypt the same long text (about 1,600 letters, written for this homework) with the Caesar cipher, using the key above, and with the toy ECC scheme, 32 bytes at a time:</p>
-  <div class="card">
-    <button id="stat-run">Compare the statistics of the two ciphertexts</button>
-    <p id="stat-status" class="sub"></p>
-    <div id="stat-out" hidden>
-      <div class="row">
-        <div class="chart"><canvas id="ch-let" width="520" height="260"></canvas></div>
-        <div class="chart"><canvas id="ch-byte" width="520" height="260"></canvas></div>
-      </div>
-      <table id="stat-table"></table>
-    </div>
-  </div>
 
   <h2>3. Statistical cryptanalysis of the Caesar cipher</h2>
   <p>The attack uses a corpus, a text of a known language. Mine has about 3,500 letters (<code>js/corpus.js</code>, written for this homework; a real attack would use a much larger corpus).
-    The relative frequency of each letter in the corpus is the model of the language: it agrees with the published English letter frequencies (correlation <span id="corr">0.98</span>).
-    The algorithm:</p>
+    The relative frequency of each letter in the corpus is the model of the language. The algorithm:</p>
   <ol>
     <li>Measure the model: the frequency of each letter in the corpus.</li>
     <li>For each of the 26 keys, decrypt the ciphertext and measure how far its letter counts are from the model with the chi-square distance
@@ -143,8 +125,9 @@ function crack(cipher, score = chiSquare) {
     <table id="exp-table" hidden></table>
   </div>
   <p><strong>Effectiveness and limitations.</strong> The success rate grows with the length of the ciphertext, because the letter counts of a short text are noisy and can look like another shift of the language.
-    The attack needs a model of the right language and a text that is typical enough of it, and it works only because the cipher keeps the letter frequencies.
-    Exhaustive key search is always possible (26 keys), but it needs a way to recognise the right plaintext, either a person reading 26 candidates (see the table above) or a score such as &chi;&sup2; or the bigrams.</p>
+    The attack needs a model of the right language and a text that is typical enough of it, and it works only because the cipher keeps the letter frequencies.</p>
+  <p><strong>Optional: comparison of the approaches.</strong> Exhaustive key search tries all 26 keys, but it needs a way to recognise the right plaintext: a person reading the candidates (see the table above) or a score.
+    Letter-frequency scoring (&chi;&sup2;) does this automatically from the counts of single letters. Bigram scoring uses pairs of letters, which carry more information, and in the test it is right more often on short ciphertexts.</p>
 
   <h2>4. Attack on the toy ECC scheme</h2>
   <p>The weakness used here is the restricted key space. The attacker knows the public key Q and tries d = 1, 2, 3, ..., adding G at each step, until dG = Q. The ciphertext is not needed to find d;
@@ -160,16 +143,16 @@ function searchKeys(Q, from, to) {
   <div class="card">
     <button id="atk-run">Attack the key pair of section 1</button>
     <table id="atk-out"></table>
-    <table id="atk-scale" hidden></table>
   </div>
   <p><strong>Differences from the attack on the Caesar cipher.</strong></p>
   <ul>
     <li>The Caesar attack reads the ciphertext: the letter statistics leak the key and a score selects it. The attack on the ECC scheme ignores the ciphertext and uses only the public key.</li>
     <li>The test on a candidate is statistical for Caesar (&chi;&sup2; can be wrong on short texts) and exact for ECC (dG = Q is true only for the right key), so the ECC attack always succeeds once the whole range is searched.</li>
-    <li>Both attacks rely on a small key space (26 keys, 65,536 keys), not on weaknesses of the operations themselves.</li>
+    <li>The Caesar attack works because the cipher keeps the statistics of the language, so it would work even with many more keys. The ECC ciphertext shows no statistics: the attack works only because the range of private keys is small.</li>
   </ul>
-  <p><strong>Why this is not feasible against a properly configured scheme.</strong> Each extra key bit doubles the work (see the table above, computed from the speed measured on this computer).
-    With 256-bit private keys, brute force needs about 2<sup>255</sup> steps. Even the best generic attacks, which need about the square root of the key space (2<sup>128</sup> steps), are far out of reach.</p>
+  <p><strong>Why this is not feasible against a properly configured scheme.</strong> The search above needs at most 2<sup>16</sup> = 65,536 steps, and each extra bit of the private key doubles the work.
+    With 256-bit private keys, brute force needs about 2<sup>255</sup> &asymp; 5.8 &middot; 10<sup>76</sup> steps on average. Even the best generic attacks, which need about the square root of the key space
+    (2<sup>128</sup> &asymp; 3.4 &middot; 10<sup>38</sup> steps), would take about 10<sup>19</sup> years at 10<sup>12</sup> steps per second.</p>
   <p><strong>Optional: alternative attacks and where the weaknesses come from.</strong></p>
   <ul>
     <li><strong>Alternative attacks.</strong> Baby-step giant-step (Shanks) and Pollard's rho find d in about &radic;(key space) steps, 2<sup>8</sup> instead of 2<sup>16</sup> here. They make the small range even weaker, but they are the reason why 256-bit keys give 128-bit security.</li>
@@ -182,7 +165,6 @@ function searchKeys(Q, from, to) {
   <h2>References</h2>
   <ul>
     <li>Certicom Research, <em>SEC 1: Elliptic Curve Cryptography</em> (ECIES) and <em>SEC 2: Recommended Elliptic Curve Domain Parameters</em> (secp256k1).</li>
-    <li>R. Lewand, <em>Cryptological Mathematics</em>, Mathematical Association of America, 2000 (letter frequencies of English).</li>
     <li>D. Shanks, <em>Class number, a theory of factorization, and genera</em>, 1971 (baby-step giant-step).</li>
     <li>J. M. Pollard, <em>Monte Carlo methods for index computation (mod p)</em>, Mathematics of Computation, 1978.</li>
   </ul>
