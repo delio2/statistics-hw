@@ -1,5 +1,5 @@
-/* Elliptic curve y^2 = x^3 + b over F_p for the toy curve of Homework 1 (BigInt, affine coordinates).
- * Educational code: it is only meant for tiny curves. */
+/* Elliptic curve y^2 = x^3 + b over F_p (BigInt, affine coordinates): the toy curve of Homework 1 and secp256k1.
+ * Educational code: not constant time, never use it for real keys. */
 (function (root) {
   'use strict';
 
@@ -19,7 +19,7 @@
 
   // A point is {x, y}; the point at infinity (the neutral element) is null.
   class Curve {
-    constructor(p, b, G) { this.p = p; this.b = b; this.G = G; }
+    constructor(p, b, G, n = null) { this.p = p; this.b = b; this.G = G; this.n = n; }     // n = order of G, if known
 
     isOnCurve(P) {
       return P === null || mod(P.y * P.y - P.x ** 3n - this.b, this.p) === 0n;
@@ -75,6 +75,17 @@
 
   const toy = new Curve(17n, 7n, { x: 1n, y: 5n });          // y^2 = x^3 + 7 (mod 17), G = (1, 5)
 
-  root.ECC = { Curve, toy, mod };
+  // secp256k1, the curve of Bitcoin and Ethereum: y^2 = x^3 + 7 over p = 2^256 - 2^32 - 977
+  const secp256k1 = new Curve(
+    0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2Fn,
+    7n,
+    {
+      x: 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798n,
+      y: 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8n,
+    },
+    0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141n,
+  );
+
+  root.ECC = { Curve, toy, secp256k1, mod };
   if (typeof module !== 'undefined') module.exports = root.ECC;
 })(typeof window !== 'undefined' ? window : globalThis);

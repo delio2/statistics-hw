@@ -28,7 +28,7 @@ pre { background: var(--code); padding: 12px; border-radius: 8px; overflow-x: au
 pre code { background: none; padding: 0; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin: 16px 0; }
 label { display: block; font-size: 0.9rem; color: var(--muted); margin: 8px 0 2px; }
-input[type=text], select {
+input[type=text], input[type=number], textarea, select {
   width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
   background: var(--bg); color: var(--fg); font: inherit;
 }
@@ -42,6 +42,9 @@ button {
 }
 @media (prefers-color-scheme: dark) { button { color: #10151c; } }
 .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+button:disabled { opacity: 0.5; cursor: wait; }
+.btns button, .card > button { margin-top: 12px; }
+caption { text-align: left; padding: 4px 0; }
 .pubkey { font-size: 1.1rem; margin: 12px 0 4px; }
 canvas { width: 100%; height: auto; display: block; margin: 8px 0; border: 1px solid var(--line); border-radius: 6px; }
 table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.93rem; }

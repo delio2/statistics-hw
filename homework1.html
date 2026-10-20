@@ -3,17 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Homework 1 - Private key to public key on a toy curve</title>
+  <title>Homework 1, exercise 1 - Private key to public key on a toy curve</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <nav>
   <a href="index.html">Home</a>
-  <a href="homework1.html">Homework 1</a>
-  <a href="homework2.html">Homework 2</a>
+  <a href="homework1.html">Homework 1, exercise 1</a>
+  <a href="homework2.html">Homework 1, exercise 2</a>
+  <a href="caesar-vs-ecc.html">Homework 2</a>
 </nav>
 <main>
-  <h1>Homework 1 - From a private key to a public key on a toy elliptic curve</h1>
+  <h1>Homework 1, exercise 1 - From a private key to a public key on a toy elliptic curve</h1>
   <p class="sub">Scalar multiplication on y&sup2; = x&sup3; + 7 (mod 17) and a statistical look at the results.</p>
 
   <p>Elliptic-curve scalar multiplication behaves like a one-way function: from a private key <code>k</code> it is easy to compute the public key <code>Q = kG</code>,
@@ -182,7 +183,7 @@ for (let a = 0; a &lt; m; a++) for (let b = 0; b &lt; m; b++) if (a !== b) { bsu
     <li>A. F. Webster, S. E. Tavares, <em>On the design of S-boxes</em>, CRYPTO 1985 (strict avalanche criterion).</li>
   </ul>
 
-  <footer>Homework 1 &middot; code: <code>js/ecc.js</code>, <code>js/toystats.js</code>, <code>js/hw1.js</code></footer>
+  <footer>Homework 1, exercise 1 &middot; code: <code>js/ecc.js</code>, <code>js/toystats.js</code>, <code>js/hw1.js</code></footer>
 </main>
 <script src="js/ecc.js"></script>
 <script src="js/toystats.js"></script>

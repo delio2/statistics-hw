@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Homework 2 - Caesar cipher and a toy ECC scheme</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav>
+  <a href="index.html">Home</a>
+  <a href="homework1.html">Homework 1, exercise 1</a>
+  <a href="homework2.html">Homework 1, exercise 2</a>
+  <a href="caesar-vs-ecc.html">Homework 2</a>
+</nav>
+<main>
+  <h1>Homework 2 - Caesar cipher and a toy ECC scheme: encryption and attacks</h1>
+  <p class="sub">The same message encrypted with both schemes, a comparison, and a statistical attack and a key-space attack.</p>
+
+  <p>I encrypt the same message with the Caesar cipher and with a toy scheme based on elliptic curves, compare the two, break the Caesar cipher with letter statistics,
+    and break the toy ECC scheme by exploiting its small private-key range.</p>
+
+  <h2>1. The message and the two schemes</h2>
+  <div class="card">
+    <label for="msg">Message (used for both schemes, at most 32 bytes)</label>
+    <input type="text" id="msg" value="MEET ME AT THE BRIDGE AT NOON" autocomplete="off">
+  </div>
+
+  <h3>The toy ECC scheme</h3>
+  <p>In Homework 1 a public key Q = dG was computed with scalar multiplication. A public key can also be used to encrypt, by combining it with a fresh secret key
+    (this is the idea of ECIES, an elliptic-curve version of ElGamal encryption). As the exercise says, I use secp256k1 with the private key restricted to a small range
+    (1 to 2<sup>16</sup> by default), so that the attack of section 4 can run in the browser. (In Homework 1, exercise 1, the toy curve with p = 17 was suggested; it is too small to carry a message.)</p>
+  <ol>
+    <li><strong>Key generation.</strong> Choose a private key d in the small range and compute the public key Q = dG. Q is published and d is kept secret.</li>
+    <li><strong>Encryption</strong> (by anyone who knows Q). Choose a fresh random secret r (256 bits), compute R = rG and the shared point S = rQ.
+      The keystream is the 32 bytes of the x-coordinate of S, and the ciphertext is c = message XOR keystream. The pair (R, c) is sent.</li>
+    <li><strong>Decryption</strong> (by the owner of d). Compute S = dR = d(rG) = r(dG) = rQ, derive the same keystream and compute message = c XOR keystream.</li>
+  </ol>
+  <p><strong>Role of the keys:</strong> d is needed to decrypt, Q lets anyone encrypt, r is a one-time secret that makes every encryption different, R lets the receiver rebuild S without ever knowing r,
+    and S is the secret that sender and receiver can both compute. The code (<code>js/toyecc.js</code>):</p>
+  <pre><code>// key generation: the private key d is restricted to 1 .. 2^bits (a small range, so that the experiments are feasible)
+function keyPair(bits) {
+  const d = 1n + randomBelow(1n &lt;&lt; BigInt(bits));
+  return { d, Q: C.mul(d) };
+}
+
+// encryption with the public key Q (message: at most 32 bytes): r is a fresh secret, R = rG is sent along
+function encrypt(message, Q) {
+  const r = 1n + randomBelow(C.n - 1n);
+  const R = C.mul(r);
+  const S = C.mul(r, Q);                                  // shared point S = rQ
+  return { R, c: xor(message, keystream(S)), r };
+}
+
+// decryption with the private key d: dR = d(rG) = r(dG) = rQ = S, so the keystream is the same
+function decrypt({ R, c }, d) {
+  const S = C.mul(d, R);
+  return xor(c, keystream(S));
+}</code></pre>
+  <div class="card">
+    <div class="row">
+      <div><label for="bits">Private key range: 1 to 2^bits (8 to 20)</label><input type="number" id="bits" value="16" min="8" max="20"></div>
+    </div>
+    <button id="ecc-run">Generate a key pair, encrypt and decrypt</button>
+    <p id="ecc-err"></p>
+    <table id="ecc-out"></table>
+  </div>
+
+  <h3>The Caesar cipher</h3>
+  <p>The Caesar cipher moves every letter k places in the alphabet (k = 0, ..., 25) and decryption moves it back. The same key k is used for both (<code>js/caesar.js</code>):</p>
+  <pre><code>// Caesar cipher: every letter is moved k places in the alphabet; other characters are kept
+const shift = (text, k) =&gt; text.toUpperCase().replace(/[A-Z]/g, (c) =&gt; String.fromCharCode((((c.charCodeAt(0) - A + k) % 26) + 26) % 26 + A));
+const encrypt = (text, k) =&gt; shift(text, k);
+const decrypt = (text, k) =&gt; shift(text, -k);</code></pre>
+  <div class="card">
+    <label for="shift">Key k (0 to 25)</label>
+    <input type="number" id="shift" value="7" min="0" max="25">
+    <table id="caesar-out"></table>
+  </div>
+
+  <h2>2. Similarities and differences</h2>
+  <p>They have in common that a secret is needed to decrypt, that decryption is the exact inverse of encryption, and that the message is masked symbol by symbol
+    (shifted letters, or bytes XORed with a keystream).</p>
+  <table>
+    <thead><tr><th></th><th>Caesar cipher</th><th>Toy ECC scheme</th></tr></thead>
+    <tbody>
+      <tr><td>Type</td><td>Symmetric: the same key k encrypts and decrypts.</td><td>Public-key: Q encrypts, d decrypts. The message itself is masked with a keystream.</td></tr>
+      <tr><td>Encryption</td><td>Add k to every letter (mod 26).</td><td>S = rQ, then c = message XOR the bytes of x(S).</td></tr>
+      <tr><td>Decryption</td><td>Subtract k from every letter.</td><td>S = dR, then message = c XOR the bytes of x(S).</td></tr>
+      <tr><td>Key space</td><td>26 keys (25 useful).</td><td>Here 2<sup>16</sup> = 65,536 private keys. An unrestricted secp256k1 key has about 2<sup>256</sup> &asymp; 1.2 &middot; 10<sup>77</sup> values.</td></tr>
+      <tr><td>Randomness</td><td>None: the same message always gives the same ciphertext.</td><td>A fresh r every time: the same message gives different ciphertexts.</td></tr>
+      <tr><td>Statistical properties</td><td>The letter frequencies of the language are kept (only moved to other letters), so they reveal the key.</td><td>The keystream bytes behave like random bytes, so the ciphertext shows no letter statistics.</td></tr>
+      <tr><td>Message size</td><td>Any length.</td><td>32 bytes for each pair (R, c): a longer text needs a fresh r for every block.</td></tr>
+    </tbody>
+  </table>
+  <p>To see the statistical difference I encrypt the same long text (about 1,600 letters, written for this homework) with the Caesar cipher, using the key above, and with the toy ECC scheme, 32 bytes at a time:</p>
+  <div class="card">
+    <button id="stat-run">Compare the statistics of the two ciphertexts</button>
+    <p id="stat-status" class="sub"></p>
+    <div id="stat-out" hidden>
+      <div class="row">
+        <div class="chart"><canvas id="ch-let" width="520" height="260"></canvas></div>
+        <div class="chart"><canvas id="ch-byte" width="520" height="260"></canvas></div>
+      </div>
+      <table id="stat-table"></table>
+    </div>
+  </div>
+
+  <h2>3. Statistical cryptanalysis of the Caesar cipher</h2>
+  <p>The attack uses a corpus, a text of a known language. Mine has about 3,500 letters (<code>js/corpus.js</code>, written for this homework; a real attack would use a much larger corpus).
+    The relative frequency of each letter in the corpus is the model of the language: it agrees with the published English letter frequencies (correlation <span id="corr">0.98</span>).
+    The algorithm:</p>
+  <ol>
+    <li>Measure the model: the frequency of each letter in the corpus.</li>
+    <li>For each of the 26 keys, decrypt the ciphertext and measure how far its letter counts are from the model with the chi-square distance
+      &chi;&sup2; = &Sigma; (observed - expected)&sup2; / expected, where expected = (number of letters) &middot; (model frequency).</li>
+    <li>The key with the smallest &chi;&sup2; is the guess.</li>
+  </ol>
+  <pre><code>// chi-square distance between the letter counts of a text and the model: small = looks like the language
+function chiSquare(text) {
+  const obs = counts(text), n = obs.reduce((a, b) =&gt; a + b, 0);
+  return obs.reduce((sum, o, i) =&gt; sum + (o - n * MODEL[i]) ** 2 / (n * MODEL[i]), 0);
+}
+
+// key recovery: try the 26 shifts and keep the one whose decryption looks most like the language
+function crack(cipher, score = chiSquare) {
+  const table = [];
+  for (let k = 0; k &lt; 26; k++) table.push({ key: k, score: score(decrypt(cipher, k)) });
+  const best = table.reduce((b, row) =&gt; (row.score &lt; b.score ? row : b));
+  return { key: best.key, table };
+}</code></pre>
+  <div class="card">
+    <label for="c-in">Ciphertext (any text; the default was encrypted with key 11)</label>
+    <textarea id="c-in" rows="4" spellcheck="false" autocomplete="off"></textarea>
+    <div class="btns"><button id="c-load">Use the ciphertext of section 1</button></div>
+    <p id="crack-sum"></p>
+    <table id="crack-table"></table>
+  </div>
+  <p>The test below uses text that is not in the corpus (the second text of <code>js/corpus.js</code>): random pieces of different lengths are encrypted with random keys and the key is recovered
+    (300 trials for each length). The optional comparison adds n-gram scoring, which is the same idea with pairs of letters (bigrams) instead of single letters.</p>
+  <div class="card">
+    <button id="exp-run">Test the algorithms on different lengths</button>
+    <table id="exp-table" hidden></table>
+  </div>
+  <p><strong>Effectiveness and limitations.</strong> The success rate grows with the length of the ciphertext, because the letter counts of a short text are noisy and can look like another shift of the language.
+    The attack needs a model of the right language and a text that is typical enough of it, and it works only because the cipher keeps the letter frequencies.
+    Exhaustive key search is always possible (26 keys), but it needs a way to recognise the right plaintext, either a person reading 26 candidates (see the table above) or a score such as &chi;&sup2; or the bigrams.</p>
+
+  <h2>4. Attack on the toy ECC scheme</h2>
+  <p>The weakness used here is the restricted key space. The attacker knows the public key Q and tries d = 1, 2, 3, ..., adding G at each step, until dG = Q. The ciphertext is not needed to find d;
+    once d is known, the message is decrypted like the owner does (<code>js/toyecc.js</code>):</p>
+  <pre><code>// the attack: try every private key d = from, ..., to until dG = Q (only the public key Q is needed)
+function searchKeys(Q, from, to) {
+  let P = C.mul(from);
+  for (let d = from; d &lt;= to; d++, P = C.add(P, C.G)) {
+    if (P.x === Q.x &amp;&amp; P.y === Q.y) return d;
+  }
+  return null;
+}</code></pre>
+  <div class="card">
+    <button id="atk-run">Attack the key pair of section 1</button>
+    <table id="atk-out"></table>
+    <table id="atk-scale" hidden></table>
+  </div>
+  <p><strong>Differences from the attack on the Caesar cipher.</strong></p>
+  <ul>
+    <li>The Caesar attack reads the ciphertext: the letter statistics leak the key and a score selects it. The attack on the ECC scheme ignores the ciphertext and uses only the public key.</li>
+    <li>The test on a candidate is statistical for Caesar (&chi;&sup2; can be wrong on short texts) and exact for ECC (dG = Q is true only for the right key), so the ECC attack always succeeds once the whole range is searched.</li>
+    <li>Both attacks rely on a small key space (26 keys, 65,536 keys), not on weaknesses of the operations themselves.</li>
+  </ul>
+  <p><strong>Why this is not feasible against a properly configured scheme.</strong> Each extra key bit doubles the work (see the table above, computed from the speed measured on this computer).
+    With 256-bit private keys, brute force needs about 2<sup>255</sup> steps. Even the best generic attacks, which need about the square root of the key space (2<sup>128</sup> steps), are far out of reach.</p>
+  <p><strong>Optional: alternative attacks and where the weaknesses come from.</strong></p>
+  <ul>
+    <li><strong>Alternative attacks.</strong> Baby-step giant-step (Shanks) and Pollard's rho find d in about &radic;(key space) steps, 2<sup>8</sup> instead of 2<sup>16</sup> here. They make the small range even weaker, but they are the reason why 256-bit keys give 128-bit security.</li>
+    <li><strong>From the restricted key space:</strong> any search finds d, so the whole scheme is broken. The ephemeral secret r is not restricted, so r alone is of no help.</li>
+    <li><strong>From the design of the toy scheme</strong> (present even with a 256-bit private key): no key derivation function (the x-coordinate is used directly as keystream, a hash would be used in practice);
+      no authentication, so the ciphertext can be modified without detection (flipping a bit of c flips the same bit of the message); if r is ever reused, the keystream repeats and c<sub>1</sub> XOR c<sub>2</sub> = m<sub>1</sub> XOR m<sub>2</sub>;
+      no check that R is a valid point of the curve; and a limit of 32 bytes per block.</li>
+  </ul>
+
+  <h2>References</h2>
+  <ul>
+    <li>Certicom Research, <em>SEC 1: Elliptic Curve Cryptography</em> (ECIES) and <em>SEC 2: Recommended Elliptic Curve Domain Parameters</em> (secp256k1).</li>
+    <li>R. Lewand, <em>Cryptological Mathematics</em>, Mathematical Association of America, 2000 (letter frequencies of English).</li>
+    <li>D. Shanks, <em>Class number, a theory of factorization, and genera</em>, 1971 (baby-step giant-step).</li>
+    <li>J. M. Pollard, <em>Monte Carlo methods for index computation (mod p)</em>, Mathematics of Computation, 1978.</li>
+  </ul>
+
+  <footer>Homework 2 &middot; code: <code>js/ecc.js</code>, <code>js/toyecc.js</code>, <code>js/caesar.js</code>, <code>js/corpus.js</code>, <code>js/hw2.js</code></footer>
+</main>
+<script src="js/ecc.js"></script>
+<script src="js/corpus.js"></script>
+<script src="js/caesar.js"></script>
+<script src="js/toyecc.js"></script>
+<script src="js/hw2.js"></script>
+</body>
+</html>

@@ -3,17 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Homework 2 - From wallet seed to Ethereum address</title>
+  <title>Homework 1, exercise 2 - From wallet seed to Ethereum address</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <nav>
   <a href="index.html">Home</a>
-  <a href="homework1.html">Homework 1</a>
-  <a href="homework2.html">Homework 2</a>
+  <a href="homework1.html">Homework 1, exercise 1</a>
+  <a href="homework2.html">Homework 1, exercise 2</a>
+  <a href="caesar-vs-ecc.html">Homework 2</a>
 </nav>
 <main>
-  <h1>Homework 2 - From wallet seed to Ethereum address</h1>
+  <h1>Homework 1, exercise 2 - From wallet seed to Ethereum address</h1>
   <p class="sub">Hashing, key derivation and cryptographic primitives in the Ethereum wallet pipeline, and their statistical properties.</p>
 
   <p>A wallet does not store a list of addresses: it keeps one secret and derives everything else from it. In this homework I follow the path from the mnemonic phrase to a checksummed
@@ -73,7 +74,7 @@
 
   <h3>secp256k1: public-key cryptography</h3>
   <p><strong>Purpose:</strong> to turn the private key into a public key that anyone can use to check signatures. The private key is an integer k between 1 and n - 1 (256 bits), and the public key is the point Q = kG
-    of the curve y&sup2; = x&sup3; + 7, the arithmetic of Homework 1 over a 256-bit prime; Ethereum uses its 64 bytes x and y. Going back from Q to k is the elliptic curve discrete logarithm problem,
+    of the curve y&sup2; = x&sup3; + 7, the arithmetic of exercise 1 over a 256-bit prime; Ethereum uses its 64 bytes x and y. Going back from Q to k is the elliptic curve discrete logarithm problem,
     which costs about 2<sup>128</sup> operations. The curve is defined in SEC 2 and Bitcoin has used it since 2009; Ethereum signs transactions with ECDSA on it.</p>
 
   <h3>Keccak-256: hashing</h3>
@@ -156,12 +157,12 @@
       <tr><td>Entropy (BIP-39)</td><td>Uniformly random bits from a good random source.</td><td>12 words = 128 bits (132 encoded bits minus 4 checksum bits), 24 words = 256 bits. A phrase chosen by hand has far fewer bits.</td></tr>
       <tr><td>Seed (PBKDF2-HMAC-SHA512)</td><td>Output indistinguishable from 512 random bits.</td><td>The 2048 iterations multiply by 2048 (about 11 bits) the work to test one guess of the passphrase; they add no entropy.</td></tr>
       <tr><td>Child keys (BIP-32)</td><td>Each key pseudo-random and unrelated to its parent.</td><td>A child key is invalid only if the left half of I is n or more, or the key is 0: probability below 2<sup>-127</sup>.</td></tr>
-      <tr><td>Public key (secp256k1)</td><td>x(kG) should look uniform and reveal nothing about k.</td><td>At 256 bits the points are expected to look random (the toy curve of Homework 1 is too small to show it). Finding k costs about 2<sup>128</sup> operations.</td></tr>
+      <tr><td>Public key (secp256k1)</td><td>x(kG) should look uniform and reveal nothing about k.</td><td>At 256 bits the points are expected to look random (the toy curve of exercise 1 is too small to show it). Finding k costs about 2<sup>128</sup> operations.</td></tr>
       <tr><td>Address (Keccak-256, 160 bits)</td><td>Uniform output and avalanche: flipping one input bit flips each output bit with probability 1/2.</td><td>Finding two keys with the same address costs about 2<sup>80</sup> operations (birthday bound); finding a key for a given address about 2<sup>160</sup>, more than the 2<sup>128</sup> of the curve.</td></tr>
       <tr><td>Checksum (EIP-55)</td><td>Check bits that behave like random bits.</td><td>A random address has on average 40 &middot; 6/16 = 15 letters, each one a check bit. A random typo passes a digit with probability 10/16 + (6/16)(1/2) = 13/16, so the whole address with probability (13/16)<sup>40</sup> = 0.0247%, about 1 in 4000. An all-lower-case address has no check at all.</td></tr>
     </tbody>
   </table>
-  <p>Statistical checks of a hash function (bit balance, avalanche, uniformity, collisions) can reveal defects, as in Homework 1, but they cannot prove collision or preimage resistance.</p>
+  <p>Statistical checks of a hash function (bit balance, avalanche, uniformity, collisions) can reveal defects, as in exercise 1, but they cannot prove collision or preimage resistance.</p>
 
   <h2>References</h2>
   <ul>
@@ -178,7 +179,7 @@
     <li>R. Rivest, A. Shamir, L. Adleman, <em>A method for obtaining digital signatures and public-key cryptosystems</em>, Communications of the ACM, 1978.</li>
   </ul>
 
-  <footer>Homework 2</footer>
+  <footer>Homework 1, exercise 2</footer>
 </main>
 </body>
 </html>
