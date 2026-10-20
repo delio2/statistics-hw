@@ -13,6 +13,6 @@ https://delio2.github.io/statistics-hw/
 
 Code (`js/`): `ecc.js` (elliptic curves), `toystats.js` and `hw1.js` (exercise 1), `corpus.js`, `caesar.js`, `toyecc.js` and `hw2.js` (Homework 2). Homework 1, exercise 2 is plain text and tables.
 
-`homework1.html` and `homework2.html` are only redirects to `hw1-ex1.html` and `hw1-ex2.html` (old links).
+`homework1.html`, `homework2.html` and `caesar-vs-ecc.html` are only redirects to `hw1-ex1.html`, `hw1-ex2.html` and `hw2-caesar-vs-ecc.html` (old links).
 
 Educational code: not constant time, do not use it for real keys.
