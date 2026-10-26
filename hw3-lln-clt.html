@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Homework 3 - n systems, m attackers: LLN and CLT</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav>
+  <a href="index.html">Home</a>
+  <a href="hw1-ex1.html">Homework 1, exercise 1</a>
+  <a href="hw1-ex2.html">Homework 1, exercise 2</a>
+  <a href="hw2-caesar-vs-ecc.html">Homework 2</a>
+  <a href="hw3-lln-clt.html">Homework 3</a>
+</nav>
+<main>
+  <h1>Homework 3 - Penetration scores of n systems and m attackers</h1>
+  <p class="sub">Law of large numbers and central limit theorem on simulated trajectories (Bernoulli and Rademacher models).</p>
+
+  <p>m attackers go through n systems and get a penetration score on each one. I model the score of an attacker as a sum of independent increments, simulate many trajectories,
+    and look at how the total, the average and the normalized total score behave when n grows.</p>
+
+  <h2>1. The model</h2>
+  <p>An attacker goes through the systems one after the other. At step i it gets the penetration score X<sub>i</sub> on system i, and the increments X<sub>1</sub>, X<sub>2</sub>, ... are independent and identically distributed.
+    After k systems its score is S<sub>k</sub> = X<sub>1</sub> + ... + X<sub>k</sub>, and the sequence S<sub>1</sub>, S<sub>2</sub>, ... is the <em>trajectory</em> of the attacker.
+    The m attackers are independent, so they give m independent trajectories.</p>
+  <table>
+    <thead><tr><th>Model</th><th>Increment X<sub>i</sub></th><th>Mean &mu;</th><th>Variance &sigma;&sup2;</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>Bernoulli</td><td>1 with probability p, 0 otherwise</td><td>p</td><td>p(1 &minus; p)</td><td>S<sub>n</sub> is the number of systems penetrated out of n</td></tr>
+      <tr><td>Rademacher</td><td>+1 or &minus;1, each with probability 1/2</td><td>0</td><td>1</td><td>symmetric score with zero mean: a net gain or loss at each step</td></tr>
+    </tbody>
+  </table>
+  <p>The three quantities are the total score S<sub>n</sub>, the average score S<sub>n</sub>/n and the normalized total score S<sub>n</sub>/&radic;n.
+    Because the increments are independent, E[S<sub>n</sub>] = n&mu; and Var(S<sub>n</sub>) = n&sigma;&sup2;, hence Var(S<sub>n</sub>/n) = &sigma;&sup2;/n and Var(S<sub>n</sub>/&radic;n) = &sigma;&sup2;.</p>
+
+  <h2>2. The simulation</h2>
+  <p>Each of the m attackers goes through N = 10,000 systems. The values of n are 10, 100, 1,000 and 10,000, and S<sub>n</sub> is read from the same trajectory at step n (<code>js/sums.js</code>).
+    I use m = 1,000 attackers and p = 0.3 for the Bernoulli model: with m = 1,000 the simulated variances and frequencies are accurate to a few percent (the error shrinks like 1/&radic;m) and the histograms are smooth.</p>
+  <pre><code>// m attackers, each one goes through N systems (N = the largest n). S[k][j] is the total score S_n
+// of attacker j for n = ns[k], read from its trajectory. The whole trajectory is kept for the
+// first `keep` attackers (for the picture)
+async function simulate(model, m, ns, keep) {
+  const N = ns[ns.length - 1], S = ns.map(() =&gt; new Float64Array(m)), paths = [];
+  for (let j = 0; j &lt; m; j++) {
+    const path = j &lt; keep ? new Int32Array(N + 1) : null;
+    let s = 0, k = 0;
+    for (let i = 1; i &lt;= N; i++) {
+      s += model.draw();                                   // score on system i
+      if (path) path[i] = s;
+      if (i === ns[k]) S[k++][j] = s;
+    }
+    if (path) paths.push(path);
+    if (j % 200 === 199) await new Promise((r) =&gt; setTimeout(r, 0));   // let the page update
+  }
+  return { S, paths };
+}</code></pre>
+  <p>From the m values of S<sub>n</sub> I compute the three quantities and one row of the tables:</p>
+  <pre><code>// the three quantities studied, for the m attackers: S_n, S_n/n and S_n/sqrt(n)
+const quantities = (S, n) =&gt; ({
+  total: S, average: S.map((x) =&gt; x / n), normalized: S.map((x) =&gt; x / Math.sqrt(n)),
+});
+
+const EPS = 0.05;
+
+// one row of the tables, for one value of n: the frequency of |S_n/n - mu| &gt; EPS
+// and the variances of the three quantities (simulated and from theory)
+function summarize(model, S, n) {
+  const q = quantities(S, n);
+  return {
+    n,
+    farFromMu: q.average.filter((x) =&gt; Math.abs(x - model.mu) &gt; EPS).length / S.length,
+    varTotal: variance(q.total), varAverage: variance(q.average), varNormalized: variance(q.normalized),
+    theory: { varTotal: n * model.sigma2, varAverage: model.sigma2 / n, varNormalized: model.sigma2 },
+  };
+}</code></pre>
+  <p id="status" class="sub"></p>
+
+  <h2>3. Sample trajectories</h2>
+  <div class="row">
+    <div class="chart"><canvas id="paths-bernoulli" width="420" height="260" role="img" aria-label="Trajectories of the Bernoulli model"></canvas></div>
+    <div class="chart"><canvas id="paths-rademacher" width="420" height="260" role="img" aria-label="Trajectories of the Rademacher model"></canvas></div>
+  </div>
+  <p class="sub">15 of the m trajectories for each model.</p>
+  <ul>
+    <li><strong>Bernoulli:</strong> the trajectories grow almost linearly in a narrow band around p&middot;k. The total score is mostly drift, and the random fluctuation (of order &radic;k) is small compared with it.</li>
+    <li><strong>Rademacher:</strong> there is no drift. The trajectories are symmetric random walks around 0 that spread out like &radic;k.</li>
+  </ul>
+
+  <h2>4. Distributions of S<sub>n</sub>, S<sub>n</sub>/n and S<sub>n</sub>/&radic;n</h2>
+  <p>For each model, each row shows the histogram of one quantity over the m attackers, for n = 10, 100, 1,000 and 10,000. The sums are integers, so every bar covers a whole number of possible values, and its height is a density.
+    When a quantity has a limit the horizontal axis is the same for all n (average score, and normalized score of the Rademacher model), so that the change with n can be seen directly.
+    In the Bernoulli model the axes of the total and of the normalized score follow their means, np and p&radic;n.</p>
+  <h3>Bernoulli model</h3>
+  <div id="fig-bernoulli"></div>
+  <table id="table-bernoulli"></table>
+  <h3>Rademacher model</h3>
+  <div id="fig-rademacher"></div>
+  <p class="sub">The black line in the last row is the density of the standard normal distribution.</p>
+  <table id="table-rademacher"></table>
+
+  <h2>5. What happens as n increases</h2>
+  <table>
+    <thead><tr><th></th><th>Total S<sub>n</sub></th><th>Average S<sub>n</sub>/n</th><th>Normalized S<sub>n</sub>/&radic;n</th></tr></thead>
+    <tbody>
+      <tr><td>Mean</td><td>n&mu;</td><td>&mu;</td><td>&mu;&radic;n</td></tr>
+      <tr><td>Variance</td><td>n&sigma;&sup2;: grows</td><td>&sigma;&sup2;/n: goes to 0</td><td>&sigma;&sup2;: constant</td></tr>
+      <tr><td>Behavior</td><td>drifts (Bernoulli) and spreads out: no limit</td><td>concentrates at &mu;: law of large numbers</td><td>Rademacher: converges to N(0, 1), central limit theorem. Bernoulli: the mean p&radic;n grows, no limit</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Law of large numbers.</strong> S<sub>n</sub>/n converges in probability to &mu;: for every &epsilon; &gt; 0, P(|S<sub>n</sub>/n &minus; &mu;| &gt; &epsilon;) goes to 0.
+    The second column of the tables is the simulated value of this probability for &epsilon; = 0.05. It decreases toward 0 as n grows, and the histograms of the average score collapse onto &mu;.</p>
+  <p><strong>Variance under the different normalizations.</strong> Var(S<sub>n</sub>) = n&sigma;&sup2; grows linearly: the total score spreads out. Var(S<sub>n</sub>/n) = &sigma;&sup2;/n goes to 0: all the attackers end up with almost the same average.
+    Only Var(S<sub>n</sub>/&radic;n) = &sigma;&sup2; stays constant, so &radic;n is the scale that keeps a distribution that is neither spreading out nor collapsing.
+    The simulated variances in the tables agree with these values within the sampling error.</p>
+  <p><strong>Central limit theorem (Rademacher model).</strong> S<sub>n</sub>/&radic;n has mean 0 and variance 1 for every n, and it converges in distribution to the standard normal N(0, 1):
+    the histograms in the last row follow the density of N(0, 1) (the black line) more and more closely as n grows.
+    In the Bernoulli model S<sub>n</sub>/&radic;n has mean p&radic;n, which grows with n, so it has no limit.</p>
+
+  <h2>6. Interpretation: systems and attackers</h2>
+  <p>A trajectory is one attacker moving through the systems. In the Bernoulli model S<sub>k</sub> counts the systems penetrated among the first k, and S<sub>n</sub>/n is the fraction of the n systems that the attacker compromises.
+    In the Rademacher model S<sub>k</sub> is a net score that goes up and down with equal probability.</p>
+  <ul>
+    <li><strong>System size n.</strong> The expected total score grows like n&mu; but its fluctuations only like &sigma;&radic;n, so the relative fluctuation (&sigma;/(&mu;&radic;n) in the Bernoulli model) shrinks like 1/&radic;n.
+      With few systems the result depends on luck: the fractions of penetrated systems of different attackers are very spread out (n = 10). With many systems every attacker penetrates almost exactly a fraction p of them,
+      and the outcome is predictable (law of large numbers). In the symmetric model the net score has no drift, but its spread still grows like &radic;n.</li>
+    <li><strong>Number of attackers m.</strong> The attackers are independent, so m does not change the distribution of the score of one attacker. It sets how many trajectories we observe (the precision of the simulated distributions grows like &radic;m)
+      and the aggregate score of all the attackers, T = S<sub>n</sub><sup>(1)</sup> + ... + S<sub>n</sub><sup>(m)</sup>, a sum of mn independent increments: E[T] = mn&mu; and Var(T) = mn&sigma;&sup2;.
+      The expected aggregate score grows with both m and n, while its relative fluctuation shrinks like 1/&radic;(mn): with many attackers and many systems the total number of penetrations is almost deterministic.
+      In the symmetric model the aggregate stays centred at 0, with a spread of order &radic;(mn).</li>
+  </ul>
+
+  <h2>References</h2>
+  <ul>
+    <li>W. Feller, <em>An Introduction to Probability Theory and Its Applications</em>, vol. I, 3rd ed., Wiley, 1968 (law of large numbers, central limit theorem, random walks).</li>
+    <li>P. Billingsley, <em>Probability and Measure</em>, 3rd ed., Wiley, 1995 (laws of large numbers, central limit theorem).</li>
+  </ul>
+
+  <footer>Homework 3 &middot; code: <code>js/sums.js</code>, <code>js/hw3.js</code></footer>
+</main>
+<script src="js/sums.js"></script>
+<script src="js/hw3.js"></script>
+</body>
+</html>

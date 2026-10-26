@@ -53,9 +53,14 @@ th { color: var(--muted); font-weight: 600; }
 td.num, th.num { font-variant-numeric: tabular-nums; text-align: right; }
 tr.hl td { background: var(--code); font-weight: 600; }
 .mono-wrap { word-break: break-all; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85rem; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.grid4 canvas { margin: 0; }
+p.qname { margin: 14px 0 4px; font-weight: 600; }
+td small, th small { color: var(--muted); font-weight: 400; }
 ul.hw { padding-left: 20px; }
 footer { color: var(--muted); font-size: 0.85rem; margin-top: 48px; }
 @media (max-width: 640px) {
   table { display: block; overflow-x: auto; }
   h1 { font-size: 1.5rem; }
+  .grid4 { grid-template-columns: repeat(2, 1fr); }
 }

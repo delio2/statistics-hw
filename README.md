@@ -10,8 +10,9 @@ https://delio2.github.io/statistics-hw/
 | `hw1-ex1.html` | Homework 1, exercise 1: private key to public key on the toy curve y² = x³ + 7 (mod 17), double-and-add, an animation and a statistical exploration |
 | `hw1-ex2.html` | Homework 1, exercise 2: the Ethereum wallet pipeline: BIP-39, BIP-32, BIP-44, secp256k1, Keccak-256 and EIP-55, with a worked example, history and statistical properties |
 | `hw2-caesar-vs-ecc.html` | Homework 2: Caesar cipher and a toy ECC scheme on secp256k1, their comparison, and the attacks on both |
+| `hw3-lln-clt.html` | Homework 3: n systems and m attackers, Bernoulli and Rademacher scores, law of large numbers and central limit theorem on simulated trajectories |
 
-Code (`js/`): `ecc.js` (elliptic curves), `toystats.js` and `hw1.js` (exercise 1), `corpus.js`, `caesar.js`, `toyecc.js` and `hw2.js` (Homework 2). Homework 1, exercise 2 is plain text and tables.
+Code (`js/`): `ecc.js` (elliptic curves), `toystats.js` and `hw1.js` (exercise 1), `corpus.js`, `caesar.js`, `toyecc.js` and `hw2.js` (Homework 2), `sums.js` and `hw3.js` (Homework 3). Homework 1, exercise 2 is plain text and tables.
 
 `homework1.html`, `homework2.html` and `caesar-vs-ecc.html` are only redirects to `hw1-ex1.html`, `hw1-ex2.html` and `hw2-caesar-vs-ecc.html` (old links).
 
