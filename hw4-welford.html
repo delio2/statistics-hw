@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Homework 4 - Welford's formulas, sampling mean and variance</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav>
+  <a href="index.html">Home</a>
+  <a href="hw1-ex1.html">Homework 1, exercise 1</a>
+  <a href="hw1-ex2.html">Homework 1, exercise 2</a>
+  <a href="hw2-caesar-vs-ecc.html">Homework 2</a>
+  <a href="hw3-lln-clt.html">Homework 3</a>
+  <a href="hw4-welford.html">Homework 4</a>
+</nav>
+<main>
+  <h1>Homework 4 - Welford's recurrence formulas, sampling mean and variance</h1>
+  <p class="sub">Exercise 1: recurrences for the sum of squares and the variance, with the code. Exercise 2: averages of the sampling means and variances of m hackers.</p>
+
+  <h2>Exercise 1 - Welford's recurrence formulas</h2>
+  <p>The values x<sub>1</sub>, x<sub>2</sub>, ... arrive one at a time. After k values, M<sub>k</sub> = (x<sub>1</sub> + ... + x<sub>k</sub>)/k is their mean,
+    SS<sub>k</sub> = &Sigma;<sub>i=1..k</sub> (x<sub>i</sub> &minus; M<sub>k</sub>)&sup2; is the sum of squares of the deviations from the mean, and s<sub>k</sub>&sup2; = SS<sub>k</sub>/(k &minus; 1), for k &ge; 2, is their (sampling) variance.
+    The aim is to update them from the results at step k &minus; 1 and the new value x<sub>k</sub> only, without storing the values.</p>
+
+  <h3>Knuth's recurrence for the mean</h3>
+  <p>The approach: write the quantity at step k through the same quantity at step k &minus; 1 and the new value. The sum of the first k values is the sum of the first k &minus; 1 values plus x<sub>k</sub>, so</p>
+  <p class="eq">k M<sub>k</sub> = (k &minus; 1) M<sub>k&minus;1</sub> + x<sub>k</sub> &nbsp;&rArr;&nbsp; M<sub>k</sub> = M<sub>k&minus;1</sub> + (x<sub>k</sub> &minus; M<sub>k&minus;1</sub>)/k &nbsp;&nbsp;(1)</p>
+  <p>which can also be written k (M<sub>k</sub> &minus; M<sub>k&minus;1</sub>) = x<sub>k</sub> &minus; M<sub>k&minus;1</sub> &nbsp;(1').</p>
+
+  <h3>Welford's recurrence for the sum of squares</h3>
+  <p>The same approach for SS<sub>k</sub>. Expanding the square gives SS<sub>k</sub> = &Sigma; x<sub>i</sub>&sup2; &minus; k M<sub>k</sub>&sup2;, hence</p>
+  <p class="eq">SS<sub>k</sub> &minus; SS<sub>k&minus;1</sub> = x<sub>k</sub>&sup2; &minus; k M<sub>k</sub>&sup2; + (k &minus; 1) M<sub>k&minus;1</sub>&sup2;.</p>
+  <p>Since (k &minus; 1) M<sub>k&minus;1</sub> = k M<sub>k</sub> &minus; x<sub>k</sub>, the last term is (k M<sub>k</sub> &minus; x<sub>k</sub>) M<sub>k&minus;1</sub>, and</p>
+  <p class="eq">SS<sub>k</sub> &minus; SS<sub>k&minus;1</sub> = x<sub>k</sub> (x<sub>k</sub> &minus; M<sub>k&minus;1</sub>) &minus; k M<sub>k</sub> (M<sub>k</sub> &minus; M<sub>k&minus;1</sub>) = x<sub>k</sub> (x<sub>k</sub> &minus; M<sub>k&minus;1</sub>) &minus; M<sub>k</sub> (x<sub>k</sub> &minus; M<sub>k&minus;1</sub>),</p>
+  <p>where the last step uses (1'). Therefore</p>
+  <p class="eq">SS<sub>k</sub> = SS<sub>k&minus;1</sub> + (x<sub>k</sub> &minus; M<sub>k&minus;1</sub>)(x<sub>k</sub> &minus; M<sub>k</sub>), &nbsp; SS<sub>1</sub> = 0 &nbsp;&nbsp;(2)</p>
+
+  <h3>Welford's recurrence for the variance</h3>
+  <p>By (1), x<sub>k</sub> &minus; M<sub>k</sub> = (x<sub>k</sub> &minus; M<sub>k&minus;1</sub>) &minus; (M<sub>k</sub> &minus; M<sub>k&minus;1</sub>) = (k &minus; 1)/k &middot; (x<sub>k</sub> &minus; M<sub>k&minus;1</sub>),
+    so (2) is also SS<sub>k</sub> = SS<sub>k&minus;1</sub> + (k &minus; 1)/k &middot; (x<sub>k</sub> &minus; M<sub>k&minus;1</sub>)&sup2;. Dividing by k &minus; 1, and using SS<sub>k&minus;1</sub>/(k &minus; 1) = (k &minus; 2)/(k &minus; 1) &middot; s<sub>k&minus;1</sub>&sup2;:</p>
+  <p class="eq">s<sub>k</sub>&sup2; = (k &minus; 2)/(k &minus; 1) &middot; s<sub>k&minus;1</sub>&sup2; + (x<sub>k</sub> &minus; M<sub>k&minus;1</sub>)&sup2;/k, &nbsp; k &ge; 2 &nbsp;&nbsp;(3)</p>
+  <p>(for k = 2 it gives s<sub>2</sub>&sup2; = (x<sub>2</sub> &minus; x<sub>1</sub>)&sup2;/2). In the code it is enough to keep SS<sub>k</sub> and divide it by k &minus; 1 when the variance is needed.</p>
+
+  <h3>The code</h3>
+  <p>Only k, M and SS are stored. Starting from k = 0, M = 0 and SS = 0, each new value x costs the 3 lines of the core logic: the difference x<sub>k</sub> &minus; M<sub>k&minus;1</sub>, the new mean by (1) and the new sum of squares by (2)
+    (after the update, <code>x - state.mean</code> is x<sub>k</sub> &minus; M<sub>k</sub>). The code (<code>js/welford.js</code>):</p>
+  <pre><code>// Welford's recurrences: update the state (k, mean, ss) with the next value x. The core logic is the 3 lines below
+function update(state, x) {
+  const delta = x - state.mean;                    // x_k - M_(k-1)
+  state.mean += delta / ++state.k;                 // M_k = M_(k-1) + (x_k - M_(k-1)) / k                 (Knuth)
+  state.ss += delta * (x - state.mean);            // SS_k = SS_(k-1) + (x_k - M_(k-1)) (x_k - M_k)       (Welford)
+}
+// the (sampling) variance of the values seen so far, for k &gt;= 2
+const variance = (state) =&gt; state.ss / (state.k - 1);</code></pre>
+
+  <h2>Exercise 2 - Sampling mean and variance</h2>
+  <p>As in <a href="hw3-lln-clt.html">Homework 3</a>, m hackers go through n systems, but now each penetration attempt gets a score between 0 and 10. The scores are drawn from a fixed distribution:
+    the uniform distribution on the integers 0, 1, ..., 10 (each value has probability 1/11). Its theoretical mean is &mu; = (0 + 10)/2 = 5 and its theoretical variance is &sigma;&sup2; = ((10 &minus; 0 + 1)&sup2; &minus; 1)/12 = 10.</p>
+  <p>Each hacker receives one score for each system, a trajectory of n scores. For each hacker the sampling mean and the sampling variance of its n scores are computed with Welford's recurrences (the scores are used as they are generated, they are never stored).
+    Then the m sampling means and the m sampling variances are averaged (their standard deviation across the hackers is computed with the same recurrences). I use m = 1,000 hackers and n = 10, 100, 1,000 and 10,000 (<code>js/welford.js</code>):</p>
+  <pre><code>// the score of one penetration attempt: an integer between 0 and 10, uniform on {0, 1, ..., 10}.
+// Its theoretical mean is (0 + 10) / 2 = 5 and its theoretical variance is ((10 - 0 + 1)^2 - 1) / 12 = 10
+const MU = 5, SIGMA2 = 10;
+const score = () =&gt; Math.floor(Math.random() * 11);
+
+// one hacker attacks n systems: the sampling mean and the sampling variance of its n scores
+function hacker(n) {
+  const state = { k: 0, mean: 0, ss: 0 };
+  for (let i = 0; i &lt; n; i++) update(state, score());
+  return { mean: state.mean, variance: variance(state) };
+}
+
+// m hackers: the average and the standard deviation, across the hackers, of the sampling means and of
+// the sampling variances (computed with the same recurrences)
+function experiment(n, m) {
+  const means = { k: 0, mean: 0, ss: 0 }, variances = { k: 0, mean: 0, ss: 0 };
+  for (let j = 0; j &lt; m; j++) {
+    const h = hacker(n);
+    update(means, h.mean);
+    update(variances, h.variance);
+  }
+  return {
+    n,
+    avgMeans: means.mean, sdMeans: Math.sqrt(variance(means)),
+    avgVariances: variances.mean, sdVariances: Math.sqrt(variance(variances)),
+  };
+}</code></pre>
+  <table id="table"></table>
+
+  <p><strong>Comparison with &mu; and &sigma;&sup2;.</strong> In every row the average of the sampling means is very close to &mu; = 5 and the average of the sampling variances is very close to &sigma;&sup2; = 10.
+    The small differences are the simulation error, which shrinks like 1/&radic;m.</p>
+  <p><strong>Conclusions.</strong> On average the sampling mean hits &mu; and the sampling variance hits &sigma;&sup2;, whatever the number n of scores of a hacker: the sampling mean and the sampling variance are unbiased estimators, E[x&#772;] = &mu; and E[s&sup2;] = &sigma;&sup2;.
+    For the variance this holds because of the divisor n &minus; 1: the sum of squares SS has expected value (n &minus; 1)&sigma;&sup2;, so dividing by n would give a variance that is too small by the factor (n &minus; 1)/n on average.</p>
+  <p><strong>Why this is useful in inferential statistics.</strong> The parameters &mu; and &sigma;&sup2; of a population are normally unknown and only one sample is available (here, the n scores of one hacker).
+    The sample mean and the sample variance of that single sample are on target on average, with no systematic error, so they can be used as estimates of the unknown &mu; and &sigma;&sup2;.
+    The spread across the hackers (the last two columns) tells how far a single sample can be from the target, which is the basis of standard errors, confidence intervals and tests.</p>
+  <p><strong>Effect of n on the variability.</strong> Increasing n does not move the averages (they stay at &mu; and &sigma;&sup2;) but reduces the variability: the standard deviation of the sampling means falls like &sigma;/&radic;n, because Var(x&#772;) = &sigma;&sup2;/n
+    (100 times more systems give about 10 times less variability), and the standard deviation of the sampling variances falls at about the same rate (its variance is of order 1/n).
+    With more systems per hacker, each sampling mean and each sampling variance is closer to &mu; and &sigma;&sup2;: the estimators are consistent.</p>
+
+  <h2>References</h2>
+  <ul>
+    <li>D. E. Knuth, <em>The Art of Computer Programming</em>, vol. 2: <em>Seminumerical Algorithms</em>, 3rd ed., Addison-Wesley, 1997, section 4.2.2 (recurrences for the mean and the sum of squares).</li>
+    <li>B. P. Welford, <em>Note on a method for calculating corrected sums of squares and products</em>, Technometrics 4 (3), 1962, pp. 419-420.</li>
+    <li>G. Casella and R. L. Berger, <em>Statistical Inference</em>, 2nd ed., Duxbury, 2002, section 5.2 (mean and variance of the sample mean, expected value of the sample variance).</li>
+  </ul>
+
+  <footer>Homework 4 &middot; code: <code>js/welford.js</code>, <code>js/hw4.js</code></footer>
+</main>
+<script src="js/welford.js"></script>
+<script src="js/hw4.js"></script>
+</body>
+</html>
