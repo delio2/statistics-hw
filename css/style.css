@@ -51,6 +51,7 @@ table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.93r
 th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
 th { color: var(--muted); font-weight: 600; }
 td.num, th.num { font-variant-numeric: tabular-nums; text-align: right; }
+td.nw { white-space: nowrap; }
 tr.hl td { background: var(--code); font-weight: 600; }
 .mono-wrap { word-break: break-all; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85rem; }
 .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }

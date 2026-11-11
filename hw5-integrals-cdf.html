@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Homework 5 - Riemann and Lebesgue integration, numerical computation of the normal CDF</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<nav>
+  <a href="index.html">Home</a>
+  <a href="hw1-ex1.html">Homework 1, exercise 1</a>
+  <a href="hw1-ex2.html">Homework 1, exercise 2</a>
+  <a href="hw2-caesar-vs-ecc.html">Homework 2</a>
+  <a href="hw3-lln-clt.html">Homework 3</a>
+  <a href="hw4-welford.html">Homework 4</a>
+  <a href="hw5-integrals-cdf.html">Homework 5</a>
+</nav>
+<main>
+  <h1>Homework 5 - Riemann and Lebesgue integration, numerical computation of the normal CDF</h1>
+  <p class="sub">Exercise 1: numerical integration with a Riemann-type sum and a Lebesgue-type sum, and their comparison. Exercise 2: an efficient method for the standard normal CDF, compared with a reference from the web. With the code.</p>
+
+  <h2>Exercise 1 - Riemann and Lebesgue integration</h2>
+  <p>The two numerical approaches, for a function f &ge; 0 on [a, b] (all the functions below are non-negative):</p>
+  <ul class="hw">
+    <li><strong>Riemann.</strong> Partition the <em>domain</em> [a, b] into N equal subintervals and add f(x<sub>i</sub>) &times; width, where x<sub>i</sub> is the midpoint of the i-th subinterval.</li>
+    <li><strong>Lebesgue.</strong> Partition the <em>range</em> [0, M], where M is the largest value of f, into K equal levels E<sub>j</sub> = [y<sub>j&minus;1</sub>, y<sub>j</sub>), with y<sub>j</sub> = jM/K (the last level also contains M),
+      and add y<sub>j&minus;1</sub> &times; &lambda;(f<sup>&minus;1</sup>(E<sub>j</sub>)), where &lambda; is the length (the Lebesgue measure) of the preimage of E<sub>j</sub> in the domain. It is the integral of a step function below f, so it is a lower sum.
+      The length of a preimage cannot be computed exactly for a general f: it is measured on the same grid of N subintervals, as the total width of the subintervals whose midpoint value lies in E<sub>j</sub>.</li>
+  </ul>
+  <p>The code (<code>js/integrals.js</code>):</p>
+<pre><code>// Riemann: partition [a, b] into N equal subintervals and add f(midpoint) * width
+function riemann(f, a, b, N) {
+  const dx = (b - a) / N;
+  let sum = 0;
+  for (let i = 0; i &lt; N; i++) sum += f(a + (i + 0.5) * dx);
+  return sum * dx;
+}
+
+// Lebesgue (f &gt;= 0): partition the range [0, M], M = largest value, into K equal levels
+// E_j = [y_(j-1), y_j), y_j = j M / K, and add y_(j-1) * (measure of the preimage of E_j).
+// The preimage is measured on the grid of the domain: the total width of the N subintervals
+// (the same as above) whose midpoint value lies in E_j. The last level also contains M
+function lebesgue(f, a, b, N, K) {
+  const dx = (b - a) / N, values = new Float64Array(N);
+  let M = 0;
+  for (let i = 0; i &lt; N; i++) { values[i] = f(a + (i + 0.5) * dx); if (values[i] &gt; M) M = values[i]; }
+  const h = M / K, measure = new Float64Array(K);
+  for (let i = 0; i &lt; N; i++) measure[Math.min(K - 1, Math.floor(values[i] / h))] += dx;
+  let sum = 0;
+  for (let j = 0; j &lt; K; j++) sum += j * h * measure[j];
+  return sum;
+}</code></pre>
+  <p>Both sums use the same N values f(x<sub>i</sub>). The Lebesgue sum adds each of them after rounding it down to a level boundary y<sub>j</sub>: grouping the values by level changes how the sum is organised, not which values enter it.</p>
+
+  <h3>Numerical results</h3>
+  <p>The functions f<sub>1</sub>, ..., f<sub>7</sub> are the seven examples of the exercise. Their integrals are known analytically (for f<sub>7</sub> it is Si(&pi;) = 1.8519370519824662...), so the error of a numerical value can be computed.</p>
+  <table id="table-functions"></table>
+  <p>I use N = 11, 101, 1,001, 10,001 and 100,001 subintervals, and K = N levels. N is odd so that the jump at x = 0.5 of the two step functions falls inside a subinterval (on a subinterval boundary their Riemann sums would be exact by chance).
+    The tables show the error |numerical value &minus; exact integral|. The last column is the observed order p, error ~ N<sup>&minus;p</sup>, between N = 10,001 and N = 100,001.
+    The midpoints never fall on x = 0, where f<sub>5</sub> is infinite and f<sub>7</sub> is 0/0.</p>
+  <p class="qname">Riemann sum (N subintervals)</p>
+  <table id="table-riemann"></table>
+  <p class="qname">Lebesgue sum (N subintervals, K = N levels)</p>
+  <table id="table-lebesgue"></table>
+  <p class="qname">Computing time and memory, f<sub>1</sub> = sin x</p>
+  <table id="table-time"></table>
+
+  <p><strong>Accuracy.</strong> For the same N the Riemann sum is more accurate than the Lebesgue sum in every row of the tables. The Lebesgue sum has the same error as the Riemann sum plus the error of rounding the values down to the levels,
+    which is always downwards and about (b &minus; a) M/(2K) on average: for f<sub>1</sub> = sin x with N = K = 100,001 it is &pi;/(2 &middot; 100,001) = 1.6 &middot; 10<sup>&minus;5</sup>, which is the error in the table, while the Riemann error is 8 &middot; 10<sup>&minus;11</sup>.</p>
+  <p><strong>Convergence.</strong> The Riemann (midpoint) sum has order p = 2 for the smooth functions f<sub>1</sub>, f<sub>2</sub> and f<sub>7</sub>, and for f<sub>4</sub> = |x &minus; 0.5|, whose corner at 0.5 is a midpoint when N is odd.
+    It has order 1 for the two step functions f<sub>3</sub> and f<sub>6</sub>: only the subinterval that contains the jump gets a wrong value, and the error is half the jump times the width of a subinterval (1/N for f<sub>3</sub>, &minus;1/(2N) for f<sub>6</sub>).
+    It has order 1/2 for the unbounded f<sub>5</sub> = 1/&radic;x: the error is about 0.605/&radic;N, almost all of it from the first subintervals.
+    The Lebesgue sum is dominated by the rounding to the levels, which is of order 1 in K for every bounded function, whatever its smoothness; so it does not profit from smoothness, and the two step functions behave like the others.
+    For f<sub>5</sub> the largest value is M = &radic;(2N), which grows with N, and the order drops to 1/2.</p>
+  <p><strong>Computational efficiency.</strong> The Riemann sum needs N evaluations of f and nothing else: time O(N), memory O(1). The Lebesgue sum also needs N evaluations of f, but the levels exist only when M is known, so the N values are stored (or f is evaluated twice),
+    then each value is assigned to a level and the K measures are accumulated and added: time O(N + K) and memory O(N + K); the time table, for the same N = K, shows that it is slower.
+    More important is the accuracy per unit of cost: for f<sub>1</sub> the Riemann sum with N = 1,001 (error 8.2 &middot; 10<sup>&minus;7</sup>) is more accurate than the Lebesgue sum with N = K = 100,001 (error 1.6 &middot; 10<sup>&minus;5</sup>), which costs about 100 times more.</p>
+  <p><strong>Do they converge to the same value?</strong> For the Riemann-integrable functions (f<sub>1</sub>, f<sub>2</sub>, f<sub>4</sub> and f<sub>7</sub> are continuous, f<sub>3</sub> and f<sub>6</sub> are bounded with one jump) the two sums converge to the same value, the integral: the errors go to 0 along every row of both tables.
+    This is expected, because a Riemann-integrable function is also Lebesgue integrable and the two integrals are equal (Rudin, theorem 11.33): the two kinds of sums approach the same number and differ only in the speed.
+    The same holds for the unbounded f<sub>5</sub> = 1/&radic;x: it is not Riemann integrable (it is not bounded), but its improper Riemann integral and its Lebesgue integral are both 2, and both sums converge to 2, slowly.</p>
+
+  <h3>Functions for which the two approaches behave differently</h3>
+  <p>A computer stores only rational numbers (every double is a fraction), so the points where the Dirichlet function and Thomae's function differ cannot be generated and tested: they are described. A rational point is the pair [p, q] = p/q and an irrational point is <code>null</code>
+    (for instance (i &minus; 1 + 1/&radic;2)/N). The Riemann sum has one tag in each of the N subintervals of [0, 1]: either the rational midpoint [2i &minus; 1, 2N], or an irrational point. The code (<code>js/integrals.js</code>):</p>
+<pre><code>// The pathological functions. A computer stores only rational numbers, so a point is described,
+// not computed: a rational point is the pair [p, q] = p/q, an irrational point is null
+const gcd = (p, q) =&gt; (q === 0 ? p : gcd(q, p % q));
+// Dirichlet: 1 if x is rational, 0 if x is irrational
+const dirichlet = (point) =&gt; (point === null ? 0 : 1);
+// Thomae: 1/q if x = p/q in lowest terms, 0 if x is irrational
+const thomae = (point) =&gt; (point === null ? 0 : gcd(point[0], point[1]) / point[1]);
+
+// Riemann sum on [0, 1] with N subintervals and one tag in each: the rational midpoint
+// (2i - 1)/(2N), or an irrational point
+function taggedRiemann(f, N, rational) {
+  let sum = 0;
+  for (let i = 1; i &lt;= N; i++) sum += f(rational ? [2 * i - 1, 2 * N] : null) / N;
+  return sum;
+}</code></pre>
+  <table id="table-pathological">
+    <thead>
+      <tr><th class="num" rowspan="2">N</th><th class="num" colspan="2">Dirichlet function</th><th class="num" colspan="2">Thomae's function</th></tr>
+      <tr><th class="num">rational tags</th><th class="num">irrational tags</th><th class="num">rational tags</th><th class="num">irrational tags</th></tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+      <tr class="hl"><td class="num">Lebesgue sum, exact measures</td><td class="num" colspan="2">0</td><td class="num" colspan="2">0</td></tr>
+    </tfoot>
+  </table>
+  <p><strong>Dirichlet function</strong> (1 at the rationals, 0 at the irrationals). Every subinterval contains rational and irrational numbers, so the Riemann sum depends on the tags: 1 with rational tags, 0 with irrational tags, for every N.
+    The sums do not converge to a common value: the upper Darboux sum is 1, the lower one is 0, and the function is not Riemann integrable. The Lebesgue approach works: the function takes two values, the preimage of 1 is the set of the rationals of [0, 1], which is countable and has measure 0,
+    the preimage of 0 has measure 1, and the integral is 1 &middot; 0 + 0 &middot; 1 = 0. The numerical Lebesgue sum of the previous section cannot find it: it measures a preimage on the grid, and all the grid points are rational, so it would assign to the preimage of 1 the whole interval, measure 1,
+    and give 1, like the Riemann sum with rational tags. The measure of the preimage must be known exactly, which is a result of measure theory, not of numerical computation.</p>
+  <p><strong>Thomae's function</strong> (1/q at p/q in lowest terms, 0 at the irrationals). It is continuous at every irrational point and discontinuous at the rationals, a countable set of measure 0, so it is Riemann integrable (Lebesgue's criterion) and its integral is 0:
+    for every &epsilon; &gt; 0 only finitely many points have f &ge; &epsilon;. The Riemann sums converge to 0 for any choice of tags, but irregularly: with the rational midpoint tags the sum is (1/N) &Sigma; gcd(2i &minus; 1, 2N)/(2N), which depends on the prime factors of N (table). The Lebesgue approach gives 0 at once: the preimage of every level above 0 is a finite set, of measure 0.
+    Here both approaches end at the same value, 0: the Lebesgue sum reaches it at once, the Riemann sums with rational tags irregularly.</p>
+
+  <h2>Exercise 2 - Numerical computation of the normal CDF</h2>
+  <p>The CDF of the standard normal distribution is &Phi;(x) = &int;<sub>&minus;&infin;</sub><sup>x</sup> &phi;(t) dt, where &phi;(t) = e<sup>&minus;t&sup2;/2</sup>/&radic;(2&pi;) is the density.
+    Because &phi; is even, &Phi;(x) = 1/2 + &int;<sub>0</sub><sup>x</sup> &phi;(t) dt and &Phi;(&minus;x) = 1 &minus; &Phi;(x).</p>
+
+  <h3>The method: a power series for the centre, a continued fraction for the tails</h3>
+  <p><strong>Series, |x| &lt; 3.</strong> The function y(x) = e<sup>x&sup2;/2</sup> &int;<sub>0</sub><sup>x</sup> e<sup>&minus;t&sup2;/2</sup> dt satisfies y&prime; = x y + 1 with y(0) = 0, and substituting a power series in this equation gives
+    y = x + x&sup3;/3 + x<sup>5</sup>/(3&middot;5) + x<sup>7</sup>/(3&middot;5&middot;7) + ... . Since &int;<sub>0</sub><sup>x</sup> &phi; = &phi;(x) y(x),</p>
+  <p class="eq">&Phi;(x) = 1/2 + &phi;(x) (x + x&sup3;/3 + x<sup>5</sup>/(3&middot;5) + x<sup>7</sup>/(3&middot;5&middot;7) + ...).</p>
+  <p>All the terms have the sign of x, and each one is the previous one times x&sup2;/(2n + 1): there is no cancellation among the terms, and the series converges for every x. It is used where it needs few terms: at most 34 for |x| &lt; 3.</p>
+  <p><strong>Tails, |x| &ge; 3.</strong> For x &gt; 0 the upper tail Q(x) = 1 &minus; &Phi;(x) is given by Laplace's continued fraction</p>
+  <p class="eq">Q(x) = &phi;(x) / (x + 1/(x + 2/(x + 3/(x + ...)))).</p>
+  <p>It converges faster the larger x is (at most about 50 iterations for x &ge; 3). It is evaluated with the modified Lentz algorithm, which goes forward and stops when an iteration changes the value by less than 10<sup>&minus;15</sup> (relative).
+    Then &Phi;(&minus;x) = Q(x) and &Phi;(x) = 1 &minus; Q(x). The tail is computed directly and not as 1 &minus; &Phi;(x): the doubles just below 1 are 1.1 &middot; 10<sup>&minus;16</sup> apart, so a probability such as &Phi;(&minus;8) = 6.2 &middot; 10<sup>&minus;16</sup> would keep at most one digit.</p>
+  <p>The code (<code>js/normcdf.js</code>); <code>series</code> and <code>tail</code> also return the number of terms or iterations, used in the tables below:</p>
+<pre><code>const SQRT_2PI = Math.sqrt(2 * Math.PI);
+
+// density phi(x) = exp(-x^2 / 2) / sqrt(2 pi)
+const density = (x) =&gt; Math.exp(-x * x / 2) / SQRT_2PI;
+
+// Series, |x| &lt; 3: Phi(x) = 1/2 + phi(x) (x + x^3/3 + x^5/(3*5) + x^7/(3*5*7) + ...).
+// All the terms have the sign of x, so there is no cancellation among them.
+// Returns the value and the number of terms that were added
+function series(x) {
+  let term = x, sum = x, n = 0;
+  while (Math.abs(term) &gt; 1e-17 * Math.abs(sum)) { n++; term *= x * x / (2 * n + 1); sum += term; }
+  return { value: 0.5 + density(x) * sum, terms: n + 1 };
+}
+
+// Tail, x &gt;= 3: Q(x) = 1 - Phi(x) = phi(x) / (x + 1/(x + 2/(x + 3/(x + ...)))),
+// a continued fraction evaluated with the modified Lentz algorithm.
+// Returns the value and the number of iterations
+function tail(x) {
+  let f = x, C = x, D = 0, k = 1;
+  for (; k &lt;= 1000; k++) {
+    D = 1 / (x + k * D);
+    C = x + k / C;
+    const delta = C * D;
+    f *= delta;
+    if (Math.abs(delta - 1) &lt; 1e-15) break;
+  }
+  return { value: density(x) / f, iterations: k };
+}
+
+// Phi(x): the series for |x| &lt; 3; for the tails the continued fraction, with Phi(-x) = 1 - Phi(x)
+function Phi(x) {
+  if (!Number.isFinite(x)) return Number.isNaN(x) ? NaN : (x &gt; 0 ? 1 : 0);
+  if (Math.abs(x) &lt; 3) return series(x).value;
+  const q = tail(Math.abs(x)).value;
+  return x &gt; 0 ? 1 - q : q;
+}</code></pre>
+
+  <h3>Comparison with a reference from the web</h3>
+  <p>The reference is the table of numerical values in the Wikipedia article <a href="https://en.wikipedia.org/wiki/68%E2%80%9395%E2%80%9399.7_rule">68&ndash;95&ndash;99.7 rule</a> (version of 10 August 2026, read on 11 November 2026).
+    For z = 0.5, 1, ..., 8 it gives the probability P(|Z| &le; z) = 2&Phi;(z) &minus; 1 that a standard normal variable Z falls within z standard deviations of the mean, with 15 decimals, and the frequency outside the range as &ldquo;1 in N&rdquo;.
+    The reference is rounded, so differences of a few 10<sup>&minus;16</sup> are expected.</p>
+  <table id="table-reference"></table>
+  <p>The largest difference of 2&Phi;(z) &minus; 1 is <span id="worst-inside"></span>: the reference is rounded to 15 decimals (an error up to 5 &middot; 10<sup>&minus;16</sup>) and the doubles close to 1 are 1.1 &middot; 10<sup>&minus;16</sup> apart.
+    The integers N coincide in the 14 rows where the table gives &ldquo;1 in N&rdquo; (for z = 0.5 and z = 1.5 it gives the coarse fractions 3 in 5 and 2 in 15, that is 1 in 1.67 and 1 in 7.5, against 1 in 1.62 and 1 in 7.48 computed).
+    For z = 8 the probability outside is about 1.2 &middot; 10<sup>&minus;15</sup> and N has 15 digits, all correct: computing the tail directly keeps the digits of a very small probability.</p>
+
+  <h3>Efficiency and accuracy</h3>
+  <p><strong>Cost.</strong> One evaluation costs the number of terms (series) or iterations (fraction) in the table. The series needs more terms as |x| grows, the fraction fewer iterations, and they are about equal at x = 3.
+    The time columns are measured in your browser: the series is cheaper for moderate x, the fraction for large x.</p>
+  <p><strong>Accuracy on the lower tail &Phi;(&minus;x)</strong> (last column). The series computes it as 1/2 minus a number close to 1/2, so the rounding error of that subtraction, about 10<sup>&minus;16</sup>, becomes large relative to a small &Phi;(&minus;x):
+    the two routes differ by about 10<sup>&minus;13</sup> at x = 3 and 10<sup>&minus;7</sup> at x = 6, and at x = 8 the series has no digit left. The fraction does not subtract, and the comparison with the reference above shows that it reproduces all the digits of the reference (up to 15 digits for z = 8).
+    That is why the tails use the fraction.</p>
+  <p><strong>The switch at x = 3.</strong> There the series has lost about two digits on the lower tail, and it is still cheaper than the fraction.</p>
+  <table id="table-routes"></table>
+
+  <h3>Other numerical approaches</h3>
+  <p>The exercise suggests numerical integration, series expansions and approximations based on erf. I implemented one of each to compare them with the method above (<code>js/normcdf.js</code>):</p>
+<pre><code>// numerical integration of the density from 0 to x with N subintervals, Phi(x) = 1/2 + integral:
+// the trapezoidal rule and Simpson's rule (N even)
+function trapezoid(x, N) {
+  const h = x / N;
+  let sum = (density(0) + density(x)) / 2;
+  for (let i = 1; i &lt; N; i++) sum += density(i * h);
+  return 0.5 + sum * h;
+}
+function simpson(x, N) {
+  const h = x / N;
+  let sum = density(0) + density(x);
+  for (let i = 1; i &lt; N; i++) sum += (i % 2 ? 4 : 2) * density(i * h);
+  return 0.5 + sum * h / 3;
+}</code></pre>
+<pre><code>// power series of erf: erf(z) = 2/sqrt(pi) * sum_n (-1)^n z^(2n+1) / (n! (2n+1)),
+// and Phi(x) = (1 + erf(x/sqrt 2)) / 2. The terms alternate in sign: for large |x| they
+// become huge before they decrease, and the sum loses its digits
+function erfSeries(z) {
+  let term = z, sum = z; // term = (-1)^n z^(2n+1) / n!
+  for (let n = 1; n &lt;= 500; n++) {
+    term *= -z * z / n;
+    sum += term / (2 * n + 1);
+    if (Math.abs(term / (2 * n + 1)) &lt;= 1e-17 * Math.abs(sum)) break;
+  }
+  return 2 / Math.sqrt(Math.PI) * sum;
+}
+const PhiErfSeries = (x) =&gt; 0.5 * (1 + erfSeries(x / Math.SQRT2));
+
+// approximation of erf (Abramowitz and Stegun 7.1.26, |error| &lt;= 1.5e-7),
+// and Phi(x) = (1 + erf(x/sqrt 2)) / 2
+function erfApprox(z) {
+  const t = 1 / (1 + 0.3275911 * Math.abs(z));
+  const poly = ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t;
+  const y = 1 - poly * Math.exp(-z * z);
+  return z &gt;= 0 ? y : -y;
+}
+const PhiErfApprox = (x) =&gt; 0.5 * (1 + erfApprox(x / Math.SQRT2));</code></pre>
+  <ul class="hw">
+    <li><strong>Numerical integration.</strong> &Phi;(x) = 1/2 + &int;<sub>0</sub><sup>x</sup> &phi; with the trapezoidal rule (error of order h&sup2;, h = x/N) or Simpson's rule (order h<sup>4</sup>, N even). One evaluation of &Phi; costs N + 1 evaluations of the exponential.</li>
+    <li><strong>Power series of erf</strong> (DLMF 7.6.1): erf(z) = (2/&radic;&pi;) &Sigma; (&minus;1)<sup>n</sup> z<sup>2n+1</sup>/(n! (2n + 1)), with &Phi;(x) = (1 + erf(x/&radic;2))/2. The terms alternate in sign and grow up to about e<sup>z&sup2;</sup> before decreasing, so the sum loses up to about z&sup2;/ln 10 digits.</li>
+    <li><strong>Approximation of erf</strong> (Abramowitz and Stegun 7.1.26): erf(z) &asymp; 1 &minus; (a<sub>1</sub>t + ... + a<sub>5</sub>t<sup>5</sup>) e<sup>&minus;z&sup2;</sup>, t = 1/(1 + 0.3275911 z), for z &ge; 0, with an error of at most 1.5 &middot; 10<sup>&minus;7</sup>: one exponential and a polynomial.</li>
+  </ul>
+  <table id="table-methods"></table>
+  <p><strong>Results.</strong> The trapezoidal rule with N = 1000 has an error of 7 &middot; 10<sup>&minus;8</sup> on the 16 points and Simpson's rule 7 &middot; 10<sup>&minus;14</sup>: the first is of order h&sup2;, the second of order h<sup>4</sup>. Both need 1,001 evaluations of the exponential for each value,
+    much more time than the series and the fraction (time column), whose error is below 10<sup>&minus;15</sup>, that is the rounding of the reference. The erf series is accurate for small |x|, but for z = x/&radic;2 up to 5.7 its terms grow to about e<sup>32</sup>, roughly 10<sup>14</sup>, before decreasing, and its largest error is 1.4 &middot; 10<sup>&minus;4</sup>.
+    The approximation of erf is the fastest and has the advertised accuracy, 1.4 &middot; 10<sup>&minus;7</sup> (the bound is 1.5 &middot; 10<sup>&minus;7</sup>): seven digits only.</p>
+
+  <h3>Why &Phi; is not an elementary function</h3>
+  <p>The elementary functions are those obtained from the variable and from constants with finitely many sums, products, quotients, compositions, roots of polynomial equations, exponentials and logarithms. Since &Phi;&prime; = &phi;, &Phi; is elementary exactly when an antiderivative of &phi; is (two antiderivatives differ by a constant).
+    The result behind the fact is Liouville's theorem (1835), in the special case that concerns exponentials, as stated by Marchisotto and Zakeri (1994, p. 300):</p>
+  <p class="eq"><em>if f and g are rational functions and g is not constant, then &int; f(x) e<sup>g(x)</sup> dx is elementary if and only if there is a rational function R such that f = R&prime; + R g&prime;</em> (and then the integral is R e<sup>g</sup> + C).</p>
+  <p>Here f = 1 and g = &minus;x&sup2;/2 (the constant factor 1/&radic;(2&pi;) does not matter), so g&prime; = &minus;x and the condition is R&prime; &minus; x R = 1. No rational function satisfies it. If R had a pole of order m &ge; 1 at some point x<sub>0</sub>,
+    then R&prime; would have a pole of order m + 1 there and x R a pole of order at most m, so R&prime; &minus; x R would have a pole of order m + 1 &ge; 2 and could not be the constant 1. So R would be a polynomial. A polynomial of degree d &ge; 0 gives R&prime; &minus; x R of degree d + 1 &ge; 1,
+    because the term x R dominates, which is not a constant, and R = 0 gives 0 &ne; 1. Hence &int; e<sup>&minus;t&sup2;/2</sup> dt is not elementary and neither is &Phi;.</p>
+
+  <h3>The error function: an exact representation that still needs numerical methods</h3>
+  <p>The error function erf(z) = (2/&radic;&pi;) &int;<sub>0</sub><sup>z</sup> e<sup>&minus;t&sup2;</sup> dt (DLMF 7.2.1) is a special function: a new name for this integral, with the complementary function erfc = 1 &minus; erf. The substitution s = &radic;2 t in &int;<sub>0</sub><sup>x</sup> &phi;(s) ds gives exactly</p>
+  <p class="eq">&Phi;(x) = (1 + erf(x/&radic;2))/2 = erfc(&minus;x/&radic;2)/2.</p>
+  <p>This is an exact analytical representation: &Phi; is written in closed form with a known function, and the properties of erf (it is odd and entire, it tends to 1, it has the Maclaurin series of DLMF 7.6.1) become properties of &Phi;.
+    But erf is not elementary either (by the formula above it is elementary exactly when &Phi; is), and the definition by an integral does not say how to get a number: the value of erf(z) has to be computed with a finite algorithm, which is again a numerical integration, a series, a continued fraction or an approximation.
+    Mathematical libraries do exactly this when they provide erf (JavaScript has no built-in erf, there is no <code>Math.erf</code>, so it has to be programmed). The approach &ldquo;through erf&rdquo; does not remove the numerical problem, it moves it to the computation of erf.</p>
+
+  <h2>References</h2>
+  <ul>
+    <li>Class notes on section 3.4, <em>The Normal Distribution</em>, of R. V. Hogg, J. W. McKean and A. T. Craig, <em>Introduction to Mathematical Statistics</em> (East Tennessee State University), the file linked in the assignment: <a href="https://faculty.etsu.edu/gardnerr/4047/notes-Hogg-McKean-Craig/Hogg-McKean-Craig-3-4.pdf">faculty.etsu.edu</a>.</li>
+    <li>W. Rudin, <em>Principles of Mathematical Analysis</em>, 3rd ed., McGraw-Hill, 1976, theorem 11.33 (Lebesgue's criterion; a Riemann integrable function is Lebesgue integrable with the same integral).</li>
+    <li>Wikipedia, <a href="https://en.wikipedia.org/wiki/68%E2%80%9395%E2%80%9399.7_rule">68&ndash;95&ndash;99.7 rule</a>, table of numerical values (version of 10 August 2026, read on 11 November 2026): the reference of Exercise 2.</li>
+    <li>NIST Digital Library of Mathematical Functions, chapter 7 (error functions): <a href="https://dlmf.nist.gov/7.2">7.2</a> definitions, <a href="https://dlmf.nist.gov/7.6">7.6</a> power series, <a href="https://dlmf.nist.gov/7.9">7.9</a> continued fractions (Laplace's fraction).</li>
+    <li>M. Abramowitz and I. A. Stegun (eds.), <em>Handbook of Mathematical Functions</em>, National Bureau of Standards, 1964, chapter 7: 7.1.5, 7.1.6 and 7.1.14 (series and continued fraction), 7.1.26 (the approximation of erf).</li>
+    <li>G. Marsaglia, <em>Evaluating the Normal Distribution</em>, Journal of Statistical Software 11 (4), 2004 (the series for &Phi;).</li>
+    <li>W. H. Press, S. A. Teukolsky, W. T. Vetterling and B. P. Flannery, <em>Numerical Recipes</em>, 3rd ed., Cambridge University Press, 2007, section 5.2 (continued fractions, modified Lentz algorithm).</li>
+    <li>E. A. Marchisotto and G.-A. Zakeri, <em>An invitation to integration in finite terms</em>, The College Mathematics Journal 25 (4), 1994, pp. 295-308 (Liouville's theorem and the case of e<sup>&minus;x&sup2;</sup>); M. Rosenlicht, <em>Integration in finite terms</em>, The American Mathematical Monthly 79 (9), 1972, pp. 963-972.</li>
+  </ul>
+
+  <footer>Homework 5 &middot; code: <code>js/integrals.js</code>, <code>js/normcdf.js</code>, <code>js/hw5.js</code></footer>
+</main>
+<script src="js/integrals.js"></script>
+<script src="js/normcdf.js"></script>
+<script src="js/hw5.js"></script>
+</body>
+</html>

@@ -12,8 +12,9 @@ https://delio2.github.io/statistics-hw/
 | `hw2-caesar-vs-ecc.html` | Homework 2: Caesar cipher and a toy ECC scheme on secp256k1, their comparison, and the attacks on both |
 | `hw3-lln-clt.html` | Homework 3: n systems and m attackers, Bernoulli and Rademacher scores, law of large numbers and central limit theorem on simulated trajectories |
 | `hw4-welford.html` | Homework 4: Welford's recurrence formulas for the sum of squares and the variance, and the sampling mean and variance of the scores of m hackers |
+| `hw5-integrals-cdf.html` | Homework 5: numerical integration with a Riemann-type and a Lebesgue-type sum (accuracy, convergence, efficiency, the Dirichlet and Thomae functions), and an efficient method for the standard normal CDF compared with a reference from the web, other numerical approaches, Liouville's theorem and the error function |
 
-Code (`js/`): `ecc.js` (elliptic curves), `toystats.js` and `hw1.js` (exercise 1), `corpus.js`, `caesar.js`, `toyecc.js` and `hw2.js` (Homework 2), `sums.js` and `hw3.js` (Homework 3), `welford.js` and `hw4.js` (Homework 4). Homework 1, exercise 2 is plain text and tables.
+Code (`js/`): `ecc.js` (elliptic curves), `toystats.js` and `hw1.js` (exercise 1), `corpus.js`, `caesar.js`, `toyecc.js` and `hw2.js` (Homework 2), `sums.js` and `hw3.js` (Homework 3), `welford.js` and `hw4.js` (Homework 4), `integrals.js`, `normcdf.js` and `hw5.js` (Homework 5). Homework 1, exercise 2 is plain text and tables.
 
 `homework1.html`, `homework2.html` and `caesar-vs-ecc.html` are only redirects to `hw1-ex1.html`, `hw1-ex2.html` and `hw2-caesar-vs-ecc.html` (old links).
 
